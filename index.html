@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>C'est son anniversaire - Un cadeau qui se vit, pas qui se déballe</title>
+    <meta name="description" content="Offrez une prestation surprise d'anniversaire inoubliable en direct : Dédicace, Chant, Cadeau, Appel surprise et Packs complets." />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+
+    <!-- Google Fonts: Fraunces, Plus Jakarta Sans, Space Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+
+    <!-- Applique le thème sombre/clair avant le premier rendu pour éviter un flash -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('csa_theme');
+          var isDark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', isDark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-fond text-ink antialiased selection:bg-rose-brand/20 selection:text-violet">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

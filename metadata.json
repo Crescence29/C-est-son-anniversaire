@@ -1,0 +1,6 @@
+{
+  "name": "C'est son anniversaire",
+  "description": "Plateforme mobile-first premium permettant d'offrir des prestations surprises d'anniversaire uniques en direct (Dédicace, Chant, Cadeau, Appel surprise, Pack complet).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

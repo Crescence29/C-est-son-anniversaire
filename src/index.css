@@ -1,0 +1,528 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-fond: var(--fond);
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-violet: var(--violet);
+  --color-rose-brand: var(--rose-brand);
+  --color-gold-brand: var(--gold-brand);
+  --color-cortex-red: var(--cortex-red);
+  --color-plum: #241a2e;
+
+  --font-serif: "Fraunces", "Georgia", serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Space Mono", monospace;
+}
+
+@layer base {
+  :root {
+    --fond: #faf7f2;
+    --canvas: #faf7f2;
+    --ink: #241a2e;
+    --violet: #4a2170;
+    --rose-brand: #d94a76;
+    --gold-brand: #b8862a;
+    --cortex-red: #b91c22;
+    --glass-bg: 255, 255, 255;
+    --glass-border: rgba(255, 255, 255, 0.85);
+    --glass-shadow: rgba(74, 33, 112, 0.06);
+  }
+
+  .dark {
+    --fond: #17111f;
+    --canvas: #17111f;
+    --ink: #f1ecf7;
+    --violet: #a78bfa;
+    --rose-brand: #ff85a6;
+    --gold-brand: #e2ab52;
+    --cortex-red: #e5484d;
+    --glass-bg: 40, 32, 51;
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--fond);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  h1, h2, h3, h4, .font-display, .font-headline {
+    font-family: 'Fraunces', 'Georgia', serif;
+  }
+
+  .font-mono, .font-space, .font-data, .font-price {
+    font-family: 'Space Mono', monospace;
+  }
+}
+
+.glass-card {
+  background-color: rgba(var(--glass-bg), 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 var(--glass-shadow);
+}
+
+.hero-text-scrim {
+  background: linear-gradient(135deg, rgba(74, 33, 112, 0.55) 0%, rgba(36, 26, 46, 0.6) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px 0 rgba(36, 26, 46, 0.25);
+}
+
+.hero-text-shadow {
+  text-shadow: 0 2px 12px rgba(36, 26, 46, 0.55);
+}
+
+.glass-card-dark {
+  background: linear-gradient(135deg, rgba(74, 33, 112, 0.95) 0%, rgba(36, 26, 46, 0.98) 100%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 16px 48px 0 rgba(36, 26, 46, 0.3);
+}
+
+.glass-panel {
+  background: rgba(var(--glass-bg), 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 40px 0 var(--glass-shadow);
+}
+
+.btn-festive {
+  background: linear-gradient(135deg, #d94a76 0%, #ab2654 100%);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 9999px;
+  box-shadow: 0 4px 18px -2px rgba(217, 74, 118, 0.38);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-festive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -2px rgba(217, 74, 118, 0.48);
+  filter: brightness(1.04);
+}
+
+.btn-festive:active {
+  transform: translateY(0);
+}
+
+.btn-violet {
+  background: linear-gradient(135deg, #4a2170 0%, #241a2e 100%);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 9999px;
+  box-shadow: 0 4px 18px -2px rgba(74, 33, 112, 0.32);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-violet:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -2px rgba(74, 33, 112, 0.42);
+  filter: brightness(1.06);
+}
+
+.btn-gold {
+  background: linear-gradient(135deg, #b8862a 0%, #946819 100%);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 9999px;
+  box-shadow: 0 4px 18px -2px rgba(184, 134, 42, 0.32);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-glass {
+  background-color: rgba(var(--glass-bg), 0.7);
+  border: 1px solid rgba(74, 33, 112, 0.15);
+  transition: all 0.2s ease;
+}
+
+.input-glass:focus {
+  outline: none;
+  border-color: #b8862a;
+  box-shadow: 0 0 0 3px rgba(184, 134, 42, 0.15);
+  background-color: rgba(var(--glass-bg), 0.98);
+}
+
+/* Hero background slideshow: crossfade + slow Ken Burns zoom/pan */
+@keyframes hero-kenburns-a {
+  0% { transform: scale(1) translate(0, 0); }
+  100% { transform: scale(1.15) translate(-2%, -2%); }
+}
+@keyframes hero-kenburns-b {
+  0% { transform: scale(1.1) translate(-2%, 0); }
+  100% { transform: scale(1.22) translate(1%, -3%); }
+}
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1.8s ease-in-out;
+}
+
+.hero-slide.is-active {
+  opacity: 1;
+  animation: hero-kenburns-a 8s ease-out forwards;
+}
+
+.hero-slide.is-active:nth-of-type(even) {
+  animation-name: hero-kenburns-b;
+}
+
+/* Card "drop and settle" entrance animation, triggered on scroll into view */
+.card-drop {
+  opacity: 0;
+  transform: translateY(-70px) scale(0.94);
+}
+
+.card-drop-in {
+  animation: card-drop-fall 0.75s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes card-drop-fall {
+  0% { opacity: 0; transform: translateY(-70px) scale(0.94); }
+  55% { opacity: 1; transform: translateY(10px) scale(1.015); }
+  75% { transform: translateY(-4px) scale(0.995); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ============================================================
+   AUTH INTRO ANIMATION : personnage qui arrive en marchant avec son
+   gâteau d'anniversaire, une étincelle brille, le formulaire apparaît,
+   puis il s'y adosse.
+   ============================================================ */
+
+@keyframes auth-char-sequence {
+  0% { opacity: 0; transform: translateX(calc(-50% - 280px)) scale(1); }
+  12% { opacity: 1; }
+  40%, 58% { opacity: 1; transform: translateX(-50%) scale(1); }
+  85%, 100% { opacity: 1; transform: translateX(calc(-50% + 18px)) translateY(-70px) scale(0.46); }
+}
+
+@keyframes auth-char-bob {
+  0%, 40% { transform: translateY(0); }
+  8%, 20%, 32% { transform: translateY(-6px); }
+  14%, 26%, 38% { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes auth-ground-fade {
+  0%, 58% { opacity: 1; transform: scale(1); }
+  85%, 100% { opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes auth-snap-flash {
+  0%, 55% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  60% { opacity: 1; transform: scale(1.3) rotate(20deg); }
+  68% { opacity: 0; transform: scale(0.8) rotate(35deg); }
+  100% { opacity: 0; transform: scale(0.8) rotate(35deg); }
+}
+
+@keyframes auth-card-reveal {
+  0%, 58% { opacity: 0; transform: scale(0.55) translateY(30px); }
+  75% { opacity: 1; transform: scale(1.03) translateY(-4px); }
+  85% { transform: scale(0.99) translateY(1px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.auth-intro-character {
+  animation: auth-char-sequence 4.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  transform-origin: center bottom;
+}
+
+.auth-intro-character-bob {
+  animation: auth-char-bob 4.5s ease-in-out forwards;
+}
+
+.auth-intro-ground {
+  animation: auth-ground-fade 4.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.auth-intro-snap {
+  animation: auth-snap-flash 4.5s ease-in-out forwards;
+}
+
+.auth-intro-card {
+  animation: auth-card-reveal 4.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  transform-origin: bottom center;
+}
+
+/* Service card entrance: fade + rise + slight scale, staggered by index */
+@keyframes service-card-in {
+  0% { opacity: 0; transform: translateY(28px) scale(0.94); }
+  55% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.service-card-in {
+  animation: service-card-in 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* 3D Coverflow carousel for "Prestations vedettes": the center card sits
+   forward and flat, side cards shrink, fade and tilt away in perspective. */
+.coverflow-stage {
+  position: relative;
+  height: 280px;
+  perspective: 1200px;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+@media (min-width: 640px) {
+  .coverflow-stage {
+    height: 320px;
+  }
+}
+
+.coverflow-card {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 200px;
+  cursor: pointer;
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.45s ease;
+  transform-style: preserve-3d;
+}
+
+@media (min-width: 640px) {
+  .coverflow-card {
+    width: 240px;
+  }
+}
+
+/* 3D stacked card deck for "Moments Magiques": front card is draggable,
+   the next 2 peek behind, offset diagonally, revealed as the front swipes off. */
+.stack-deck {
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.stack-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 16px 32px -10px rgba(36, 26, 46, 0.4);
+  transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.3s ease;
+  cursor: grab;
+}
+
+.stack-card:active {
+  cursor: grabbing;
+}
+
+/* Liquid morphing navigation: the bar's own outline dips into a smooth
+   valley that glides to the active tab, cradling a floating icon chip. */
+.liquid-nav-path {
+  fill: rgba(var(--glass-bg), 0.92);
+}
+
+.liquid-follow {
+  transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Bottom sheet / modal entrance used by the mobile "Menu" button */
+@keyframes sheet-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-slide-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sheet-backdrop-in {
+  animation: sheet-backdrop-in 0.2s ease both;
+}
+
+.sheet-slide-in {
+  animation: sheet-slide-in 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Refresh loading overlay (RefreshLoadingOverlay.tsx) */
+@keyframes refresh-card-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.refresh-card-in {
+  animation: refresh-card-in 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.refresh-ring-progress {
+  transition: stroke-dashoffset 0.15s linear;
+}
+
+@keyframes refresh-flame-flicker {
+  0%, 100% { transform: scaleY(1) scaleX(1) rotate(0deg); opacity: 1; }
+  25% { transform: scaleY(1.08) scaleX(0.94) rotate(-2deg); opacity: 0.92; }
+  50% { transform: scaleY(0.94) scaleX(1.05) rotate(1.5deg); opacity: 1; }
+  75% { transform: scaleY(1.05) scaleX(0.96) rotate(-1deg); opacity: 0.95; }
+}
+
+.refresh-flame-flicker {
+  animation: refresh-flame-flicker 0.9s ease-in-out infinite;
+}
+
+@keyframes refresh-check-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.refresh-check-pop {
+  animation: refresh-check-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes refresh-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+.refresh-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.8);
+  display: inline-block;
+  animation: refresh-dot-bounce 1s ease-in-out infinite;
+}
+
+/* ==========================================================
+   DEV DASHBOARD — premium dark SaaS theme, scoped to .dev-dashboard
+   so the rest of the site (client-facing, festive palette) is
+   completely unaffected.
+   ========================================================== */
+.dev-dashboard {
+  --dd-bg: #0a0e1a;
+  --dd-bg-soft: #0d1220;
+  --dd-panel: #10162a;
+  --dd-panel-hover: #141c34;
+  --dd-border: rgba(148, 163, 184, 0.12);
+  --dd-border-strong: rgba(148, 163, 184, 0.22);
+  --dd-ink: #e8ecf7;
+  --dd-ink-soft: #8992ab;
+  --dd-ink-faint: #5b6480;
+  --dd-accent: #6366f1;
+  --dd-accent-soft: rgba(99, 102, 241, 0.14);
+  --dd-accent-2: #22d3ee;
+  background: var(--dd-bg);
+  color: var(--dd-ink);
+  min-height: 100vh;
+}
+
+.dev-dashboard,
+.dev-dashboard button,
+.dev-dashboard input,
+.dev-dashboard textarea,
+.dev-dashboard select {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.dev-dashboard h1, .dev-dashboard h2, .dev-dashboard h3, .dev-dashboard h4 {
+  font-family: 'Fraunces', 'Georgia', serif;
+  color: var(--dd-ink);
+}
+
+/* Every existing glass-card / glass-panel inside the dashboard is
+   reskinned via the cascade — zero JSX/markup changes required, so
+   none of the existing handlers or structure are touched. */
+.dev-dashboard .glass-card,
+.dev-dashboard .glass-panel {
+  background: var(--dd-panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--dd-border);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -12px rgba(0, 0, 0, 0.5);
+}
+
+.dev-dashboard .text-ink { color: var(--dd-ink); }
+.dev-dashboard .text-ink\/70,
+.dev-dashboard .text-ink\/60 { color: var(--dd-ink-soft); }
+.dev-dashboard .text-ink\/50,
+.dev-dashboard .text-ink\/40 { color: var(--dd-ink-faint); }
+.dev-dashboard .border-black\/5,
+.dev-dashboard .border-black\/10 { border-color: var(--dd-border); }
+.dev-dashboard .bg-black\/5:hover,
+.dev-dashboard .hover\:bg-black\/5:hover { background: rgba(148, 163, 184, 0.08); }
+.dev-dashboard input,
+.dev-dashboard textarea,
+.dev-dashboard select {
+  background: var(--dd-bg-soft) !important;
+  border-color: var(--dd-border) !important;
+  color: var(--dd-ink) !important;
+}
+.dev-dashboard input::placeholder,
+.dev-dashboard textarea::placeholder { color: var(--dd-ink-faint); }
+
+/* Primary action buttons: recolored from the festive rose/gold to a
+   calmer indigo, in scope only — same class, same behavior. */
+.dev-dashboard .btn-festive {
+  background: linear-gradient(135deg, var(--dd-accent) 0%, #4338ca 100%);
+  box-shadow: 0 4px 18px -2px rgba(99, 102, 241, 0.45);
+}
+.dev-dashboard .btn-festive:hover {
+  filter: brightness(1.08);
+}
+
+.dd-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.dd-scrollbar::-webkit-scrollbar-thumb { background: var(--dd-border-strong); border-radius: 999px; }
+.dd-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+/* Shimmer skeleton loader */
+@keyframes dd-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.dd-skeleton {
+  background: linear-gradient(90deg, var(--dd-panel) 25%, var(--dd-panel-hover) 50%, var(--dd-panel) 75%);
+  background-size: 200% 100%;
+  animation: dd-shimmer 1.6s ease-in-out infinite;
+  border-radius: 10px;
+}
+
+/* Sidebar */
+.dd-sidebar {
+  transition: width 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes dd-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dd-fade-in {
+  animation: dd-fade-in 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes dd-drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.dd-drawer-in {
+  animation: dd-drawer-in 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Hide scrollbars for slick category carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
