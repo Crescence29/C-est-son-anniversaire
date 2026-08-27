@@ -23,7 +23,7 @@ import { db } from './src/server/dataStore.ts';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Basic Middlewares
   // En production, seules les origines explicitement autorisées (le vrai
