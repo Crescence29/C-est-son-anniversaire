@@ -7,7 +7,7 @@ ALTER TABLE users
 
 CREATE TABLE activity_logs (
   id VARCHAR(64) PRIMARY KEY,
-  actor_id VARCHAR(36) NULL,
+  actor_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NULL,
   actor_name VARCHAR(150) NULL,
   actor_role VARCHAR(20) NULL,
   action VARCHAR(60) NOT NULL,

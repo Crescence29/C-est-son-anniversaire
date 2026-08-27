@@ -15,7 +15,7 @@ CREATE TABLE faq_items (
 
 CREATE TABLE support_messages (
   id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   subject VARCHAR(200) NOT NULL,
   message TEXT NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'open',
