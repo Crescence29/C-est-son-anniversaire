@@ -112,4 +112,8 @@ async function startServer() {
 
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
+  // Exit so the host's process supervisor (Railway, PM2, etc.) sees a real
+  // crash and restarts/retries instead of leaving a process alive that
+  // never actually called app.listen().
+  process.exit(1);
 });
