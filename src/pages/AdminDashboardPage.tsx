@@ -37,6 +37,8 @@ import {
   MessageSquareHeart,
   Send,
   Ban,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -55,6 +57,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   support_message_sent: MessageSquareHeart,
   support_message_replied: Send,
   profile_updated: UserPlus,
+  password_reset_by_admin: KeyRound,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -73,6 +76,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   support_message_sent: 'Nouveau message client',
   support_message_replied: 'Réponse envoyée à un client',
   profile_updated: 'Profil personnel modifié',
+  password_reset_by_admin: 'Mot de passe réinitialisé par le développeur',
 };
 
 export const AdminDashboardPage: React.FC = () => {
@@ -381,6 +385,23 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ userName: string; password: string } | null>(null);
+  const [isResettingPasswordFor, setIsResettingPasswordFor] = useState<string | null>(null);
+
+  const handleResetPassword = async (user: User) => {
+    if (!window.confirm(`Générer un nouveau mot de passe pour ${user.full_name} ? L’ancien cessera de fonctionner immédiatement.`)) return;
+
+    try {
+      setIsResettingPasswordFor(user.id);
+      const res = await api.put<{ newPassword: string }>(`/admin/users/${user.id}/reset-password`, {});
+      setResetPasswordResult({ userName: user.full_name, password: res.newPassword });
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la réinitialisation du mot de passe.');
+    } finally {
+      setIsResettingPasswordFor(null);
+    }
+  };
+
   const handleUpdateReviewStatus = async (reviewId: string, status: 'published' | 'hidden') => {
     try {
       await api.put(`/admin/reviews/${reviewId}/status`, { status });
@@ -657,6 +678,37 @@ export const AdminDashboardPage: React.FC = () => {
       {/* TAB 2: USER MANAGEMENT */}
       {activeTab === 'users' && (
         <div className="glass-card rounded-2xl p-6 border border-black/5 dark:border-white/10 space-y-4">
+          {resetPasswordResult && (
+            <div className="p-4 rounded-xl bg-gold-brand/10 border border-gold-brand/30 space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-gold-brand" />
+                  Nouveau mot de passe pour {resetPasswordResult.userName}
+                </span>
+                <button onClick={() => setResetPasswordResult(null)} className="text-ink/50 hover:text-ink">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 p-2 rounded-lg bg-white/80 dark:bg-white/10 font-mono text-sm text-ink select-all">
+                  {resetPasswordResult.password}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(resetPasswordResult.password);
+                  }}
+                  title="Copier"
+                  className="p-2 rounded-lg bg-gold-brand/20 text-gold-brand hover:bg-gold-brand/30 transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-ink/60">
+                Communique ce mot de passe à la personne concernée — il ne sera plus affiché après avoir fermé ce message.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <h3 className="font-serif font-bold text-base text-ink">
               Comptes & Attribution des Rôles
@@ -752,6 +804,17 @@ export const AdminDashboardPage: React.FC = () => {
                           >
                             {u.status === 'active' ? 'Suspendre' : 'Réactiver'}
                           </button>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => handleResetPassword(u)}
+                              disabled={isResettingPasswordFor === u.id}
+                              title="Réinitialiser le mot de passe"
+                              className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg font-semibold bg-gold-brand/10 text-gold-brand hover:bg-gold-brand/20 transition-all disabled:opacity-50"
+                            >
+                              <KeyRound className="w-3 h-3" />
+                              {isResettingPasswordFor === u.id ? '...' : 'Réinitialiser MDP'}
+                            </button>
+                          )}
                           {!u.is_super_admin && (
                             <button
                               onClick={() => handleBanUser(u)}

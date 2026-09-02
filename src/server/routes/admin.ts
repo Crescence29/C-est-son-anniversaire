@@ -209,6 +209,42 @@ router.put('/users/:id/status', (req: AuthRequest, res: Response): void => {
   res.json({ message: `Compte ${status === 'active' ? 'réactivé' : 'suspendu'}.`, user });
 });
 
+// PUT /api/admin/users/:id/reset-password (réservé au compte développeur protégé)
+router.put('/users/:id/reset-password', async (req: AuthRequest, res: Response): Promise<void> => {
+  if (!req.user?.is_super_admin) {
+    res.status(403).json({ error: 'Seul le compte développeur peut réinitialiser le mot de passe d’un autre compte.' });
+    return;
+  }
+
+  const { id } = req.params;
+  const user = db.users.find((u) => u.id === id);
+  if (!user) {
+    res.status(404).json({ error: 'Utilisateur introuvable.' });
+    return;
+  }
+
+  const newPassword = `Csa${Math.random().toString(36).slice(2, 8)}!${Math.floor(Math.random() * 900 + 100)}`;
+  const newHash = await bcrypt.hash(newPassword, 10);
+  db.passwords.set(user.id, newHash);
+  user.updated_at = new Date().toISOString();
+
+  db.logActivity({
+    actor_id: req.user.id,
+    actor_name: req.user.full_name,
+    actor_role: req.user.role,
+    action: 'password_reset_by_admin',
+    target_type: 'user',
+    target_id: user.id,
+    details: `Mot de passe de ${user.full_name} (${user.email}) réinitialisé par le développeur.`,
+    ip_address: req.ip,
+  });
+
+  res.json({
+    message: `Nouveau mot de passe généré pour ${user.full_name}.`,
+    newPassword,
+  });
+});
+
 // PUT /api/admin/users/:id/ban (définitif, aucune route de "débannissement" n'existe volontairement)
 router.put('/users/:id/ban', (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
