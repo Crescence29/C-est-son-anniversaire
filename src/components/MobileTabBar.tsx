@@ -28,9 +28,14 @@ const CHIP_RADIUS = 24;
 // this bar must reserve matching bottom clearance (pb-28) so scrolling
 // content never ends up underneath the floating chip.
 const CHIP_PROTRUSION = CHIP_RADIUS;
-const NOTCH_RADIUS = 30;
+// Kept narrow on purpose: on a 5-column mobile bar, columns sit only
+// ~68px apart. A wider curve (as used by wider bars) would span past the
+// clamped notch center into the neighboring tab and visually slice
+// through its icon, even though the chip itself now tracks the true
+// center independently (see clampChipX).
+const NOTCH_RADIUS = 18;
 const NOTCH_DEPTH = 28;
-const NOTCH_CURVE = 22;
+const NOTCH_CURVE = 10;
 
 /**
  * Keeps the notch center far enough from both rounded ends of the bar that
