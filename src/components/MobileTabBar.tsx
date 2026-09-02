@@ -41,6 +41,17 @@ function clampNotchX(width: number, height: number, notchX: number): number {
 }
 
 /**
+ * The floating chip only needs to stay fully inside the bar — unlike the SVG
+ * notch, it doesn't need extra clearance for a curve. On narrow phones with
+ * 5 columns, the notch's wider clamp would otherwise drag the chip sideways
+ * onto the neighboring tab's icon (e.g. Home riding onto Catalogue), so the
+ * chip tracks the tab's true center independently.
+ */
+function clampChipX(width: number, chipX: number): number {
+  return Math.max(CHIP_RADIUS, Math.min(width - CHIP_RADIUS, chipX));
+}
+
+/**
  * Builds the bar's outline as a single SVG path: a rounded pill whose top
  * edge dips into a smooth valley at `notchX`, cradling the floating chip.
  * `notchX` must already be clamped via `clampNotchX`.
@@ -73,6 +84,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
   // selected state is tracked manually instead of derived from currentView.
   const [manualTab, setManualTab] = useState<LiquidTabKey | null>(null);
   const [indicatorX, setIndicatorX] = useState<number | null>(null);
+  const [chipX, setChipX] = useState<number | null>(null);
   const [barSize, setBarSize] = useState({ width: 0, height: 0 });
 
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -143,6 +155,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     const barRect = bar.getBoundingClientRect();
     const center = btnRect.left - barRect.left + btnRect.width / 2;
     setIndicatorX(clampNotchX(barRect.width, barRect.height, center));
+    setChipX(clampChipX(barRect.width, center));
     setBarSize({ width: barRect.width, height: barRect.height });
   };
 
@@ -232,7 +245,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           {ready && (
             <div
               className="absolute w-12 h-12 rounded-full glass-card border border-white/70 dark:border-white/15 shadow-lg flex items-center justify-center text-cortex-red pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: -CHIP_RADIUS }}
+              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: -CHIP_RADIUS }}
             >
               {activeTab.renderIcon('', 'chip')}
             </div>
@@ -242,7 +255,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           {ready && (
             <div
               className="absolute w-12 text-center pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: barSize.height + 4 }}
+              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: barSize.height + 4 }}
             >
               <span className="text-[9px] font-semibold text-cortex-red whitespace-nowrap">{activeTab.label}</span>
             </div>

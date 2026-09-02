@@ -11,6 +11,7 @@ export interface User {
   is_super_admin?: boolean;
   is_banned?: boolean;
   status_reason?: string | null;
+  token_version?: number;
   avatar_url?: string;
   created_at: string;
   updated_at: string;

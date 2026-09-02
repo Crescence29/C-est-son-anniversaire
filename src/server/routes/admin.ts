@@ -226,6 +226,7 @@ router.put('/users/:id/reset-password', async (req: AuthRequest, res: Response):
   const newPassword = `Csa${Math.random().toString(36).slice(2, 8)}!${Math.floor(Math.random() * 900 + 100)}`;
   const newHash = await bcrypt.hash(newPassword, 10);
   db.passwords.set(user.id, newHash);
+  user.token_version = (user.token_version || 0) + 1;
   user.updated_at = new Date().toISOString();
 
   db.logActivity({

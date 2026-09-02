@@ -42,7 +42,7 @@ type TableName =
   | 'activity_logs' | 'faq_items' | 'support_messages';
 
 const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
-  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
+  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
   categories: { primaryKey: 'id', columns: ['id', 'name', 'slug', 'description', 'image_url', 'icon_name', 'commission_rate', 'is_active', 'created_at', 'updated_at'] },
   services: { primaryKey: 'id', columns: ['id', 'category_id', 'name', 'slug', 'description', 'short_description', 'price', 'currency', 'delay_label', 'image_url', 'is_available', 'is_featured', 'is_live_broadcast', 'created_at', 'updated_at'] },
   orders: { primaryKey: 'id', columns: ['id', 'order_number', 'client_id', 'service_id', 'category_id', 'recipient_name', 'recipient_phone', 'birthday_date', 'message', 'special_instructions', 'status', 'amount', 'currency', 'commission_rate', 'commission_amount', 'net_amount', 'delivered_at', 'created_at', 'updated_at'] },

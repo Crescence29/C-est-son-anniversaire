@@ -23,6 +23,7 @@ export function generateToken(user: User): string {
       email: user.email,
       role: user.role,
       status: user.status,
+      tv: user.token_version || 0,
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -47,7 +48,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: UserRole };
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: UserRole; tv?: number };
     const user = db.users.find((u) => u.id === decoded.id);
 
     if (!user) {
@@ -57,6 +58,14 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
 
     if (user.status === 'suspended') {
       res.status(403).json({ error: 'Votre compte est suspendu. Veuillez contacter le support.' });
+      return;
+    }
+
+    // Un changement de mot de passe (par l'utilisateur ou par un admin) fait
+    // avancer token_version : toute session émise avant devient invalide,
+    // même si son JWT n'a pas encore expiré.
+    if ((decoded.tv || 0) !== (user.token_version || 0)) {
+      res.status(401).json({ error: 'Votre session a expiré suite à un changement de mot de passe. Veuillez vous reconnecter.' });
       return;
     }
 

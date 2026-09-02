@@ -306,6 +306,7 @@ router.post('/change-password', authenticateToken, async (req: AuthRequest, res:
 
     const newHash = await bcrypt.hash(newPassword, 10);
     db.passwords.set(req.user.id, newHash);
+    req.user.token_version = (req.user.token_version || 0) + 1;
 
     res.json({ message: 'Mot de passe modifié avec succès.' });
   } catch {
@@ -375,6 +376,7 @@ router.post('/reset-password', async (req, res: Response): Promise<void> => {
 
     const newHash = await bcrypt.hash(newPassword, 10);
     db.passwords.set(user.id, newHash);
+    user.token_version = (user.token_version || 0) + 1;
 
     user.reset_password_token = null;
     user.reset_password_expires_at = null;
