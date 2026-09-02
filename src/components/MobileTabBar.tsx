@@ -28,53 +28,47 @@ const CHIP_RADIUS = 24;
 // this bar must reserve matching bottom clearance (pb-28) so scrolling
 // content never ends up underneath the floating chip.
 const CHIP_PROTRUSION = CHIP_RADIUS;
-// Kept narrow on purpose: on a 5-column mobile bar, columns sit only
-// ~68px apart. A wider curve (as used by wider bars) would span past the
-// clamped notch center into the neighboring tab and visually slice
-// through its icon, even though the chip itself now tracks the true
-// center independently (see clampChipX).
-const NOTCH_RADIUS = 18;
+// Default (max) notch dimensions, used whenever a tab's true center has
+// room for them. Never used to shift the notch's position — only its size
+// adapts (see computeNotchGeometry), so the notch always sits exactly on
+// the active tab's real center, for every tab, on every screen width.
+const NOTCH_RADIUS = 22;
 const NOTCH_DEPTH = 28;
-const NOTCH_CURVE = 10;
+const NOTCH_CURVE = 14;
 
 /**
- * Keeps the notch center far enough from both rounded ends of the bar that
- * its curves never collide with them. The chip/label must clamp through
- * this same function so they stay nested exactly in the notch it draws.
+ * The SVG notch must not cross the bar's own rounded end caps (radius `cr`
+ * from each side). Rather than moving the notch off the tab's true center
+ * to make room — which is what caused the earlier misalignment — this
+ * shrinks the notch's horizontal reach (radius + curve) to whatever space
+ * is actually available on its tighter side, keeping its center exact.
  */
-function clampNotchX(width: number, height: number, notchX: number): number {
+function computeNotchGeometry(width: number, height: number, notchX: number): { radius: number; curve: number } {
   const cr = height / 2;
-  const min = cr + NOTCH_RADIUS + NOTCH_CURVE;
-  const max = width - cr - NOTCH_RADIUS - NOTCH_CURVE;
-  return Math.max(min, Math.min(max, notchX));
-}
-
-/**
- * The floating chip only needs to stay fully inside the bar — unlike the SVG
- * notch, it doesn't need extra clearance for a curve. On narrow phones with
- * 5 columns, the notch's wider clamp would otherwise drag the chip sideways
- * onto the neighboring tab's icon (e.g. Home riding onto Catalogue), so the
- * chip tracks the tab's true center independently.
- */
-function clampChipX(width: number, chipX: number): number {
-  return Math.max(CHIP_RADIUS, Math.min(width - CHIP_RADIUS, chipX));
+  const desiredHalfWidth = NOTCH_RADIUS + NOTCH_CURVE;
+  const available = Math.min(notchX - cr, width - cr - notchX);
+  const halfWidth = Math.max(0, Math.min(desiredHalfWidth, available));
+  const scale = halfWidth / desiredHalfWidth;
+  return { radius: NOTCH_RADIUS * scale, curve: NOTCH_CURVE * scale };
 }
 
 /**
  * Builds the bar's outline as a single SVG path: a rounded pill whose top
- * edge dips into a smooth valley at `notchX`, cradling the floating chip.
- * `notchX` must already be clamped via `clampNotchX`.
+ * edge dips into a smooth valley centered exactly at `notchX` — the active
+ * tab's real, measured center (see updateIndicator). The valley's own size
+ * is derived from `notchX` itself so it never has to move to fit.
  */
 function buildNavPath(width: number, height: number, notchX: number): string {
   const cr = height / 2;
   const nx = notchX;
+  const { radius, curve } = computeNotchGeometry(width, height, notchX);
 
   return `
     M ${cr},0
-    L ${nx - NOTCH_RADIUS - NOTCH_CURVE},0
-    C ${nx - NOTCH_RADIUS - NOTCH_CURVE * 0.4},0 ${nx - NOTCH_RADIUS},${NOTCH_DEPTH * 0.9} ${nx - NOTCH_RADIUS * 0.55},${NOTCH_DEPTH}
-    A ${NOTCH_RADIUS},${NOTCH_RADIUS} 0 0 0 ${nx + NOTCH_RADIUS * 0.55},${NOTCH_DEPTH}
-    C ${nx + NOTCH_RADIUS},${NOTCH_DEPTH * 0.9} ${nx + NOTCH_RADIUS + NOTCH_CURVE * 0.4},0 ${nx + NOTCH_RADIUS + NOTCH_CURVE},0
+    L ${nx - radius - curve},0
+    C ${nx - radius - curve * 0.4},0 ${nx - radius},${NOTCH_DEPTH * 0.9} ${nx - radius * 0.55},${NOTCH_DEPTH}
+    A ${radius || 0.01},${radius || 0.01} 0 0 0 ${nx + radius * 0.55},${NOTCH_DEPTH}
+    C ${nx + radius},${NOTCH_DEPTH * 0.9} ${nx + radius + curve * 0.4},0 ${nx + radius + curve},0
     L ${width - cr},0
     A ${cr},${cr} 0 0 1 ${width - cr},${height}
     L ${cr},${height}
@@ -92,8 +86,10 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
   // The company tab has no "page" of its own (it just opens a modal), so its
   // selected state is tracked manually instead of derived from currentView.
   const [manualTab, setManualTab] = useState<LiquidTabKey | null>(null);
+  // The active tab's real, measured horizontal center — shared as-is by the
+  // notch, the floating chip and its label, so all three are always exactly
+  // aligned with each other and with the tab itself.
   const [indicatorX, setIndicatorX] = useState<number | null>(null);
-  const [chipX, setChipX] = useState<number | null>(null);
   const [barSize, setBarSize] = useState({ width: 0, height: 0 });
 
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -162,9 +158,11 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     if (!btn || !bar) return;
     const btnRect = btn.getBoundingClientRect();
     const barRect = bar.getBoundingClientRect();
+    // getBoundingClientRect gives the button's real on-screen position, so
+    // this center is exact for every tab and every viewport width — never a
+    // hardcoded offset.
     const center = btnRect.left - barRect.left + btnRect.width / 2;
-    setIndicatorX(clampNotchX(barRect.width, barRect.height, center));
-    setChipX(clampChipX(barRect.width, center));
+    setIndicatorX(center);
     setBarSize({ width: barRect.width, height: barRect.height });
   };
 
@@ -254,7 +252,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           {ready && (
             <div
               className="absolute w-12 h-12 rounded-full glass-card border border-white/70 dark:border-white/15 shadow-lg flex items-center justify-center text-cortex-red pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: -CHIP_PROTRUSION }}
+              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: -CHIP_PROTRUSION }}
             >
               {activeTab.renderIcon('', 'chip')}
             </div>
@@ -264,7 +262,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           {ready && (
             <div
               className="absolute w-12 text-center pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: barSize.height + 4 }}
+              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: barSize.height + 4 }}
             >
               <span className="text-[9px] font-semibold text-cortex-red whitespace-nowrap">{activeTab.label}</span>
             </div>
