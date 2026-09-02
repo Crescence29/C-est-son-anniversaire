@@ -152,8 +152,16 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
 
   const activeTab = liquidTabs.find((t) => t.active) ?? liquidTabs[0];
 
+  // Read by updateIndicator instead of closing over `activeTab` directly, so
+  // that callers holding an older closure of updateIndicator (the
+  // ResizeObserver below is set up once at mount and never recreated) still
+  // always measure the *current* active tab instead of snapping back to
+  // whichever tab was active when their closure was captured.
+  const activeTabKeyRef = useRef(activeTab.key);
+  activeTabKeyRef.current = activeTab.key;
+
   const updateIndicator = () => {
-    const btn = tabRefs.current[activeTab.key];
+    const btn = tabRefs.current[activeTabKeyRef.current];
     const bar = barRef.current;
     if (!btn || !bar) return;
     const btnRect = btn.getBoundingClientRect();
