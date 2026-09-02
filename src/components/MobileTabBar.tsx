@@ -24,6 +24,10 @@ interface LiquidTab {
 const ICON_SIZE = 'w-5 h-5';
 
 const CHIP_RADIUS = 24;
+// How far the chip pokes up above the bar's top edge. Kept well under
+// CHIP_RADIUS (a full 50% protrusion) so it doesn't cover scrolling page
+// content sitting just above the fixed nav bar.
+const CHIP_PROTRUSION = 12;
 const NOTCH_RADIUS = 30;
 const NOTCH_DEPTH = 28;
 const NOTCH_CURVE = 22;
@@ -245,7 +249,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           {ready && (
             <div
               className="absolute w-12 h-12 rounded-full glass-card border border-white/70 dark:border-white/15 shadow-lg flex items-center justify-center text-cortex-red pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: -CHIP_RADIUS }}
+              style={{ transform: `translateX(${(chipX ?? indicatorX)! - CHIP_RADIUS}px)`, top: -CHIP_PROTRUSION }}
             >
               {activeTab.renderIcon('', 'chip')}
             </div>
