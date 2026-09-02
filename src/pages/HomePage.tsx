@@ -240,7 +240,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
   }, []);
 
   return (
-    <div className="space-y-16 sm:space-y-24 pb-12">
+    <div className="space-y-16 sm:space-y-24 pb-28 md:pb-12">
       {/* 1. HERO SECTION */}
       <section className="relative isolate pt-6 sm:pt-12 overflow-hidden min-h-[520px] sm:min-h-[600px] flex items-center">
         {/* Animated photo background (Ken Burns crossfade) */}

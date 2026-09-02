@@ -24,10 +24,10 @@ interface LiquidTab {
 const ICON_SIZE = 'w-5 h-5';
 
 const CHIP_RADIUS = 24;
-// How far the chip pokes up above the bar's top edge. Kept well under
-// CHIP_RADIUS (a full 50% protrusion) so it doesn't cover scrolling page
-// content sitting just above the fixed nav bar.
-const CHIP_PROTRUSION = 12;
+// How far the chip pokes up above the bar's top edge. Pages that render
+// this bar must reserve matching bottom clearance (pb-28) so scrolling
+// content never ends up underneath the floating chip.
+const CHIP_PROTRUSION = CHIP_RADIUS;
 const NOTCH_RADIUS = 30;
 const NOTCH_DEPTH = 28;
 const NOTCH_CURVE = 22;
