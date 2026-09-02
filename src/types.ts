@@ -9,6 +9,8 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   is_super_admin?: boolean;
+  is_banned?: boolean;
+  status_reason?: string | null;
   avatar_url?: string;
   created_at: string;
   updated_at: string;

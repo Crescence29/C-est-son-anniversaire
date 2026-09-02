@@ -96,7 +96,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
       {/* Client Profile Header */}
       <div className="glass-panel rounded-3xl p-6 border border-white/60 dark:border-white/10 shadow-lg flex flex-col sm:flex-row items-center sm:items-start gap-4">
         <img
-          src={user?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
+          src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.full_name || 'U')}&backgroundColor=d94a76,4a2170`}
           alt={user?.full_name}
           className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md"
         />
@@ -282,7 +282,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
 
             <div className="flex items-center gap-4">
               <img
-                src={editAvatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
+                src={editAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(editName || 'U')}&backgroundColor=d94a76,4a2170`}
                 alt="Aperçu de la photo de profil"
                 className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md shrink-0"
               />

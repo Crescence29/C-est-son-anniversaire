@@ -46,7 +46,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <div className="md:col-span-2">
             <AppLogo size="md" showText={false} className="mb-4" />
             <h3 className="font-serif font-bold text-lg text-white mb-2">
-              C’est son anniversaire
+              C’EST SON ANNIVERSAIRE
             </h3>
             <p className="text-xs text-white/70 leading-relaxed max-w-md mb-4 font-sans">
               « Un cadeau qui se vit, pas qui se déballe. » La première plateforme mobile-first
@@ -159,7 +159,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
 
         {/* Copyright */}
         <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-white/50">
-          <p>© 2026 C’est son anniversaire. Tous droits réservés.</p>
+          <p>© 2026 C’EST SON ANNIVERSAIRE. Tous droits réservés.</p>
           <div className="flex items-center gap-1 text-white/60">
             <span>CORTEX BENIN TV</span>
             {/*/<Heart className="w-3.5 h-3.5 text-rose-brand fill-current" />*/}

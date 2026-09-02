@@ -36,6 +36,7 @@ import {
   LifeBuoy,
   MessageSquareHeart,
   Send,
+  Ban,
 } from 'lucide-react';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -350,11 +351,33 @@ export const AdminDashboardPage: React.FC = () => {
 
   const handleToggleUserStatus = async (user: User) => {
     const nextStatus: UserStatus = user.status === 'active' ? 'suspended' : 'active';
+    let reason: string | null = null;
+
+    if (nextStatus === 'suspended') {
+      reason = window.prompt(`Motif de la suspension de ${user.full_name} (visible par le client) :`);
+      if (reason === null) return;
+    }
+
     try {
-      await api.put(`/admin/users/${user.id}/status`, { status: nextStatus });
+      await api.put(`/admin/users/${user.id}/status`, { status: nextStatus, reason });
       fetchAdminData();
     } catch (err: any) {
       alert(err?.message || 'Erreur lors de la mise à jour du statut.');
+    }
+  };
+
+  const handleBanUser = async (user: User) => {
+    const reason = window.prompt(
+      `Bannissement DÉFINITIF de ${user.full_name} — décision sans appel.\nMotif (visible par le client) :`
+    );
+    if (!reason || !reason.trim()) return;
+    if (!window.confirm(`Confirmer le bannissement définitif de ${user.full_name} ? Cette action est irréversible.`)) return;
+
+    try {
+      await api.put(`/admin/users/${user.id}/ban`, { reason });
+      fetchAdminData();
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors du bannissement.');
     }
   };
 
@@ -706,25 +729,41 @@ export const AdminDashboardPage: React.FC = () => {
                     <td className="py-3">
                       <span
                         className={`font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                          u.status === 'active'
+                          u.is_banned
+                            ? 'bg-red-700/30 text-red-800 dark:text-red-300'
+                            : u.status === 'active'
                             ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-red-500/20 text-red-700 dark:text-red-400'
+                            : 'bg-amber-500/20 text-amber-700 dark:text-amber-400'
                         }`}
                       >
-                        {u.status}
+                        {u.is_banned ? 'banni' : u.status}
                       </span>
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => handleToggleUserStatus(u)}
-                        className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${
-                          u.status === 'active'
-                            ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20'
-                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
-                        }`}
-                      >
-                        {u.status === 'active' ? 'Suspendre' : 'Réactiver'}
-                      </button>
+                      {!u.is_banned && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleToggleUserStatus(u)}
+                            className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${
+                              u.status === 'active'
+                                ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20'
+                                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                            }`}
+                          >
+                            {u.status === 'active' ? 'Suspendre' : 'Réactiver'}
+                          </button>
+                          {!u.is_super_admin && (
+                            <button
+                              onClick={() => handleBanUser(u)}
+                              title="Bannir définitivement (sans appel)"
+                              className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg font-semibold bg-red-700/10 text-red-700 hover:bg-red-700/20 transition-all"
+                            >
+                              <Ban className="w-3 h-3" />
+                              Bannir
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

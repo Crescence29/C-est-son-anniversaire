@@ -168,7 +168,7 @@ router.put('/users/:id/role', (req: AuthRequest, res: Response): void => {
 // PUT /api/admin/users/:id/status
 router.put('/users/:id/status', (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, reason } = req.body;
 
   if (!['active', 'suspended'].includes(status)) {
     res.status(400).json({ error: 'Statut invalide.' });
@@ -192,6 +192,7 @@ router.put('/users/:id/status', (req: AuthRequest, res: Response): void => {
   }
 
   user.status = status as UserStatus;
+  user.status_reason = status === 'suspended' ? (reason || null) : null;
   user.updated_at = new Date().toISOString();
 
   db.logActivity({
@@ -201,11 +202,56 @@ router.put('/users/:id/status', (req: AuthRequest, res: Response): void => {
     action: 'user_status_changed',
     target_type: 'user',
     target_id: user.id,
-    details: `Compte de ${user.full_name} ${status === 'active' ? 'réactivé' : 'suspendu'}.`,
+    details: `Compte de ${user.full_name} ${status === 'active' ? 'réactivé' : 'suspendu'}${reason ? ` (motif : ${reason})` : ''}.`,
     ip_address: req.ip,
   });
 
   res.json({ message: `Compte ${status === 'active' ? 'réactivé' : 'suspendu'}.`, user });
+});
+
+// PUT /api/admin/users/:id/ban (définitif, aucune route de "débannissement" n'existe volontairement)
+router.put('/users/:id/ban', (req: AuthRequest, res: Response): void => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  if (!reason || typeof reason !== 'string' || !reason.trim()) {
+    res.status(400).json({ error: 'Le motif du bannissement est obligatoire.' });
+    return;
+  }
+
+  const user = db.users.find((u) => u.id === id);
+  if (!user) {
+    res.status(404).json({ error: 'Utilisateur introuvable.' });
+    return;
+  }
+
+  if (user.is_super_admin) {
+    res.status(403).json({ error: 'Ce compte est protégé et ne peut pas être banni.' });
+    return;
+  }
+
+  if (user.id === req.user?.id) {
+    res.status(400).json({ error: 'Vous ne pouvez pas bannir votre propre compte.' });
+    return;
+  }
+
+  user.is_banned = true;
+  user.status = 'suspended';
+  user.status_reason = reason;
+  user.updated_at = new Date().toISOString();
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'user_banned',
+    target_type: 'user',
+    target_id: user.id,
+    details: `Compte de ${user.full_name} banni définitivement (motif : ${reason}).`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: `Compte de ${user.full_name} banni définitivement.`, user });
 });
 
 // GET /api/admin/settings (reprend les mêmes valeurs que la route publique,

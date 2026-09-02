@@ -33,12 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Brand Logo & Name */}
         <div className="flex items-center gap-3">
-          <div className="flex flex-col items-center leading-none">
-            <AppLogo size="sm" showText={false} onClick={() => onNavigate('home')} />
-            <span className="text-[9px] text-violet/80 font-mono uppercase tracking-widest mt-1">
-              Moments d’émotion
-            </span>
-          </div>
+          <AppLogo size="sm" showText={false} onClick={() => onNavigate('home')} />
         </div>
 
         {/* Desktop Navigation Links */}
@@ -211,7 +206,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-full glass-card hover:bg-white/80 dark:hover:bg-white/10 transition-all border border-black/10 dark:border-white/10 shadow-xs"
               >
                 <img
-                  src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                  src={user.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.full_name || 'U')}&backgroundColor=d94a76,4a2170`}
                   alt={user.full_name}
                   className="w-7 h-7 rounded-full object-cover border border-violet/20"
                 />

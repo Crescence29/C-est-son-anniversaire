@@ -52,6 +52,25 @@ router.post('/register', async (req, res: Response): Promise<void> => {
       return;
     }
 
+    // Le bannissement est définitif : un compte banni ne peut pas revenir en
+    // recréant un compte avec le même email ou le même numéro de téléphone.
+    const bannedMatch = db.users.find(
+      (u) => u.is_banned && (u.email.toLowerCase() === email.toLowerCase() || u.phone === phone)
+    );
+    if (bannedMatch) {
+      db.logActivity({
+        action: 'register_blocked_banned',
+        target_type: 'user',
+        details: `Tentative d'inscription bloquée : email/téléphone déjà banni (${email} / ${phone}).`,
+        ip_address: req.ip,
+      });
+      res.status(403).json({
+        error: 'Ce compte a été banni définitivement et ne peut pas être recréé.',
+        banned: true,
+      });
+      return;
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = `usr-client-${Date.now()}`;
 
@@ -134,6 +153,25 @@ router.post('/login', async (req, res: Response): Promise<void> => {
       return;
     }
 
+    if (user.is_banned) {
+      db.logActivity({
+        actor_id: user.id,
+        actor_name: user.full_name,
+        actor_role: user.role,
+        action: 'login_failed',
+        target_type: 'user',
+        target_id: user.id,
+        details: 'Tentative de connexion sur un compte banni définitivement.',
+        ip_address: req.ip,
+      });
+      res.status(403).json({
+        error: 'Ce compte a été banni définitivement. Cette décision est sans appel.',
+        banned: true,
+        reason: user.status_reason || null,
+      });
+      return;
+    }
+
     if (user.status === 'suspended') {
       db.logActivity({
         actor_id: user.id,
@@ -145,7 +183,11 @@ router.post('/login', async (req, res: Response): Promise<void> => {
         details: 'Tentative de connexion sur un compte suspendu.',
         ip_address: req.ip,
       });
-      res.status(403).json({ error: 'Ce compte a été suspendu par un administrateur.' });
+      res.status(403).json({
+        error: 'Ce compte a été suspendu par un administrateur.',
+        suspended: true,
+        reason: user.status_reason || null,
+      });
       return;
     }
 

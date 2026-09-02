@@ -30,7 +30,11 @@ export async function apiRequest<T = any>(
 
   if (!response.ok) {
     const errorMsg = data?.error || data?.message || `Erreur ${response.status}`;
-    throw new Error(errorMsg);
+    const error = new Error(errorMsg) as Error & { banned?: boolean; suspended?: boolean; reason?: string | null };
+    if (data?.banned) error.banned = true;
+    if (data?.suspended) error.suspended = true;
+    if (data?.reason !== undefined) error.reason = data.reason;
+    throw error;
   }
 
   return data as T;

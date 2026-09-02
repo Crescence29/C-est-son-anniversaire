@@ -27,10 +27,10 @@ interface HomePageProps {
 
 const DEFAULT_SETTINGS: SiteSettings = {
   logo_mode: 'image',
-  logo_text: 'C’est son anniversaire',
-  hero_title_line1: 'Un cadeau qui se vit,',
-  hero_title_line2: 'pas qui se déballe.',
-  hero_subtitle: 'Offrez une prestation surprise inoubliable : dédicace émouvante en émission, sérénade vocale live, coup de fil complice ou gâteau haute pâtisserie livré en mains propres.',
+  logo_text: 'C’EST SON ANNIVERSAIRE',
+  hero_title_line1: 'Votre émission',
+  hero_title_line2: 'C’EST SON ANNIVERSAIRE',
+  hero_subtitle: 'Moment de détente',
   hero_images: ['/HDB1.jpg', '/HBD2.jpg', '/HBD3.jpg', '/HBD4.jpg'],
   hero_cta_primary_label: 'Découvrir les prestations',
   hero_cta_secondary_label: 'Voir les réactions en direct',
@@ -277,7 +277,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3.5">
             <button
               onClick={() => onNavigate('catalog')}
-              className="btn-festive w-full sm:w-auto text-sm sm:text-base px-8 py-3.5 flex items-center justify-center gap-2 shadow-xl shadow-rose-brand/25"
+              className="w-full sm:w-auto text-sm sm:text-base px-8 py-3.5 rounded-full flex items-center justify-center gap-2 font-semibold text-plum shadow-xl transition-all hover:brightness-105"
+              style={{ background: 'linear-gradient(135deg, #ffe28a 0%, #d4af37 45%, #b8862a 100%)', boxShadow: '0 8px 24px -4px rgba(184, 134, 42, 0.5)' }}
             >
               <span>{settings.hero_cta_primary_label}</span>
               {/*<ArrowRight className="w-4 h-4" />*/}
@@ -288,7 +289,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
                 const el = document.getElementById('moments-magiques');
                 el?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-sm font-semibold border border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-2 hero-text-shadow"
+              className="w-full sm:w-auto px-6 py-3.5 rounded-full bg-gold-brand/15 hover:bg-gold-brand/25 text-gold-brand text-sm font-semibold border border-gold-brand/50 backdrop-blur-md transition-all flex items-center justify-center gap-2 hero-text-shadow"
             >
               {/*<Play className="w-4 h-4 text-violet fill-current" />*/}
               <span>{settings.hero_cta_secondary_label}</span>
@@ -655,7 +656,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
 
               <div className="mt-5 pt-3 border-t border-black/5 dark:border-white/10 flex items-center gap-3">
                 <img
-                  src={review.user_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                  src={review.user_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(review.user_name || 'U')}&backgroundColor=d94a76,4a2170`}
                   alt={review.user_name}
                   className="w-8 h-8 rounded-full object-cover"
                 />

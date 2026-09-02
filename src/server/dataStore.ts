@@ -3,10 +3,10 @@ import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVi
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logo_mode: 'image',
-  logo_text: 'C’est son anniversaire',
-  hero_title_line1: 'Un cadeau qui se vit,',
-  hero_title_line2: 'pas qui se déballe.',
-  hero_subtitle: 'Offrez une prestation surprise inoubliable : dédicace émouvante en émission, sérénade vocale live, coup de fil complice ou gâteau haute pâtisserie livré en mains propres.',
+  logo_text: 'C’EST SON ANNIVERSAIRE',
+  hero_title_line1: 'Votre émission',
+  hero_title_line2: 'C’EST SON ANNIVERSAIRE',
+  hero_subtitle: 'Moment de détente',
   hero_images: ['/HDB1.jpg', '/HBD2.jpg', '/HBD3.jpg', '/HBD4.jpg'],
   hero_cta_primary_label: 'Découvrir les prestations',
   hero_cta_secondary_label: 'Voir les réactions en direct',
@@ -42,7 +42,7 @@ type TableName =
   | 'activity_logs' | 'faq_items' | 'support_messages';
 
 const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
-  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'status', 'is_super_admin', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
+  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
   categories: { primaryKey: 'id', columns: ['id', 'name', 'slug', 'description', 'image_url', 'icon_name', 'commission_rate', 'is_active', 'created_at', 'updated_at'] },
   services: { primaryKey: 'id', columns: ['id', 'category_id', 'name', 'slug', 'description', 'short_description', 'price', 'currency', 'delay_label', 'image_url', 'is_available', 'is_featured', 'is_live_broadcast', 'created_at', 'updated_at'] },
   orders: { primaryKey: 'id', columns: ['id', 'order_number', 'client_id', 'service_id', 'category_id', 'recipient_name', 'recipient_phone', 'birthday_date', 'message', 'special_instructions', 'status', 'amount', 'currency', 'commission_rate', 'commission_amount', 'net_amount', 'delivered_at', 'created_at', 'updated_at'] },
@@ -81,7 +81,7 @@ function normalizeRow(row: Record<string, any>): Record<string, any> {
   for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at']) {
     if (key in out && out[key] != null) out[key] = iso(out[key]);
   }
-  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin']) {
+  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned']) {
     if (key in out) out[key] = Boolean(out[key]);
   }
   for (const key of ['price', 'amount', 'commission_rate', 'commission_amount', 'net_amount', 'rate']) {

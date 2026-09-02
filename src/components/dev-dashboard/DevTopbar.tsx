@@ -51,7 +51,7 @@ export const DevTopbar: React.FC<DevTopbarProps> = ({ title, subtitle, onOpenMob
         {user && (
           <div className="flex items-center gap-2 pl-2.5 sm:border-l" style={{ borderColor: 'var(--dd-border)' }}>
             <img
-              src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+              src={user.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.full_name || 'U')}&backgroundColor=d94a76,4a2170`}
               alt={user.full_name}
               className="w-8 h-8 rounded-full object-cover border"
               style={{ borderColor: 'var(--dd-border-strong)' }}

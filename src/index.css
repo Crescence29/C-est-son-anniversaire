@@ -12,9 +12,9 @@
   --color-cortex-red: var(--cortex-red);
   --color-plum: #241a2e;
 
-  --font-serif: "Fraunces", "Georgia", serif;
-  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Space Mono", monospace;
+  --font-serif: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Roboto", monospace;
 }
 
 @layer base {
@@ -45,7 +45,7 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: var(--fond);
     color: var(--ink);
     min-height: 100vh;
@@ -54,11 +54,11 @@
   }
 
   h1, h2, h3, h4, .font-display, .font-headline {
-    font-family: 'Fraunces', 'Georgia', serif;
+    font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 
   .font-mono, .font-space, .font-data, .font-price {
-    font-family: 'Space Mono', monospace;
+    font-family: 'Roboto', monospace;
   }
 }
 
