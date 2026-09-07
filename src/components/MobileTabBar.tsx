@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { Home, Gift, User, Briefcase, Shield, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { MoreMenuSheet } from './MoreMenuSheet.tsx';
@@ -37,23 +38,34 @@ const BUMP_HEIGHT = 40;
 // room for them. Never used to shift the hill's position — only its size
 // adapts (see computeBumpGeometry), so the hill always sits exactly on
 // the active tab's real center, for every tab, on every screen width.
-const BUMP_RADIUS = 24;
-const BUMP_CURVE = 20;
+// Wide relative to BUMP_HEIGHT on purpose: the S-curve on each side needs
+// enough horizontal run to rise 40px smoothly. Too narrow (a taller/steeper
+// hill than its width supports) makes the curve overshoot and self-cross,
+// rendering as a spike instead of a dome.
+const BUMP_RADIUS = 30;
+const BUMP_CURVE = 24;
 
 /**
  * The SVG hill must not cross the bar's own rounded end caps (radius `cr`
  * from each side). Rather than moving the hill off the tab's true center
- * to make room, this shrinks its horizontal reach (radius + curve) to
- * whatever space is actually available on its tighter side, keeping its
- * center exact.
+ * to make room, this shrinks the hill's horizontal reach (radius + curve)
+ * to whatever space is actually available on its tighter side, keeping
+ * its center exact.
+ *
+ * Critically, `height` scales down by the *same* factor as the width. A
+ * hill that only shrinks horizontally while staying BUMP_HEIGHT tall (as
+ * an earlier version of this did) gets steeper and steeper as it narrows,
+ * until the S-curve overshoots itself and renders as a spike instead of a
+ * dome — scaling both dimensions together keeps the aspect ratio, and so
+ * the curve, always the same.
  */
-function computeBumpGeometry(width: number, pillHeight: number, bumpX: number): { radius: number; curve: number } {
+function computeBumpGeometry(width: number, pillHeight: number, bumpX: number): { radius: number; curve: number; height: number } {
   const cr = pillHeight / 2;
   const desiredHalfWidth = BUMP_RADIUS + BUMP_CURVE;
   const available = Math.min(bumpX - cr, width - cr - bumpX);
   const halfWidth = Math.max(0, Math.min(desiredHalfWidth, available));
   const scale = halfWidth / desiredHalfWidth;
-  return { radius: BUMP_RADIUS * scale, curve: BUMP_CURVE * scale };
+  return { radius: BUMP_RADIUS * scale, curve: BUMP_CURVE * scale, height: BUMP_HEIGHT * scale };
 }
 
 /**
@@ -61,22 +73,24 @@ function computeBumpGeometry(width: number, pillHeight: number, bumpX: number): 
  * edge rises into a smooth hill centered exactly at `bumpX` — the active
  * tab's real, measured center (see updateIndicator). `pillHeight` is the
  * bar's own height *excluding* the hill's extra headroom; the path's total
- * height is `pillHeight + BUMP_HEIGHT`, with the pill itself starting at
- * y = BUMP_HEIGHT (the hill peaks at y = 0).
+ * height is `pillHeight + BUMP_HEIGHT` (the container always reserves the
+ * full headroom even though the hill itself may render shorter near an
+ * edge — see computeBumpGeometry).
  */
 function buildNavPath(width: number, pillHeight: number, bumpX: number): string {
   const cr = pillHeight / 2;
   const nx = bumpX;
   const top = BUMP_HEIGHT;
   const bottom = top + pillHeight;
-  const { radius, curve } = computeBumpGeometry(width, pillHeight, bumpX);
+  const { radius, curve, height } = computeBumpGeometry(width, pillHeight, bumpX);
+  const peak = top - height;
 
   return `
     M ${cr},${top}
     L ${nx - radius - curve},${top}
-    C ${nx - radius - curve * 0.4},${top} ${nx - radius},${top - BUMP_HEIGHT * 0.9} ${nx - radius * 0.55},${top - BUMP_HEIGHT}
-    A ${radius || 0.01},${radius || 0.01} 0 0 1 ${nx + radius * 0.55},${top - BUMP_HEIGHT}
-    C ${nx + radius},${top - BUMP_HEIGHT * 0.9} ${nx + radius + curve * 0.4},${top} ${nx + radius + curve},${top}
+    C ${nx - radius - curve * 0.4},${top} ${nx - radius},${top - height * 0.9} ${nx - radius * 0.55},${peak}
+    A ${radius || 0.01},${radius || 0.01} 0 0 1 ${nx + radius * 0.55},${peak}
+    C ${nx + radius},${top - height * 0.9} ${nx + radius + curve * 0.4},${top} ${nx + radius + curve},${top}
     L ${width - cr},${top}
     A ${cr},${cr} 0 0 1 ${width - cr},${bottom}
     L ${cr},${bottom}
@@ -204,43 +218,52 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // CSS transitions on the SVG `d` attribute aren't reliably supported, so the
-  // notch glide is tweened by hand: interpolate notchX every frame and write
-  // the recomputed path straight to the DOM (no per-frame React re-render).
+  // The notch's glide is driven by a single Framer Motion value shared with
+  // the badge (see the `x` style below), so both are always perfectly in
+  // sync — there is no separate hand-rolled easing loop to keep aligned
+  // with Framer's own animation.
   const pathElRef = useRef<SVGPathElement | null>(null);
-  const animatedXRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const motionX = useMotionValue(0);
+  const hasSyncedOnce = useRef(false);
+
+  const renderPathAt = (x: number) => {
+    if (pathElRef.current && barSize.width > 0) {
+      pathElRef.current.setAttribute('d', buildNavPath(barSize.width, barSize.height, x));
+    }
+  };
 
   useEffect(() => {
-    if (indicatorX === null || barSize.width === 0) return;
+    if (indicatorX === null) return;
 
-    const from = animatedXRef.current ?? indicatorX;
-    const to = indicatorX;
-    const duration = 350;
-    const start = performance.now();
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    if (!hasSyncedOnce.current) {
+      // First measurement (mount, or after a route/role change resets the
+      // tab list): snap straight there, nothing to animate from yet.
+      motionX.set(indicatorX);
+      hasSyncedOnce.current = true;
+      renderPathAt(indicatorX);
+      return;
+    }
 
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    const controls = animate(motionX, indicatorX, {
+      type: 'spring',
+      stiffness: 260,
+      damping: 28,
+      mass: 0.9,
+    });
+    return () => controls.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicatorX]);
 
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const x = from + (to - from) * easeOutCubic(t);
-      animatedXRef.current = x;
-      if (pathElRef.current) {
-        pathElRef.current.setAttribute('d', buildNavPath(barSize.width, barSize.height, x));
-      }
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(step);
-      } else {
-        rafRef.current = null;
-      }
-    };
+  // Keep the hill's own d attribute in lockstep with the motion value on
+  // every animation tick, and re-render it immediately if the bar's own
+  // size changes (e.g. viewport resize) without waiting for a tab switch.
+  useEffect(() => {
+    renderPathAt(motionX.get());
+    return motionX.on('change', renderPathAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [barSize.width, barSize.height]);
 
-    rafRef.current = requestAnimationFrame(step);
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [indicatorX, barSize.width, barSize.height]);
+  const badgeX = useTransform(motionX, (v) => v - BADGE_RADIUS);
 
   const goToReviews = () => {
     setMoreOpen(false);
@@ -262,26 +285,10 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
               <path
                 ref={pathElRef}
                 className="liquid-nav-path"
-                d={ready ? buildNavPath(barSize.width, barSize.height, animatedXRef.current ?? indicatorX!) : undefined}
+                d={ready ? buildNavPath(barSize.width, barSize.height, motionX.get()) : undefined}
               />
             </clipPath>
           </svg>
-
-          {/* Active-tab badge: a solid circle rising out of the hill, always
-              sharing the exact same measured center as the hill itself. */}
-          {ready && (
-            <div
-              className="absolute rounded-full bg-cortex-red shadow-lg shadow-cortex-red/40 flex items-center justify-center text-white pointer-events-none liquid-follow"
-              style={{
-                width: BADGE_RADIUS * 2,
-                height: BADGE_RADIUS * 2,
-                transform: `translateX(${indicatorX! - BADGE_RADIUS}px)`,
-                top: -8,
-              }}
-            >
-              {activeTab.renderIcon('', 'chip')}
-            </div>
-          )}
 
           {/* Thin accent line hugging the pill's bottom edge — a sibling, not a
               border on the clipped bar itself, so the clip-path can never cut it off. */}
@@ -325,6 +332,26 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
               <span className="text-[9px] font-medium">Menu</span>
             </button>
           </div>
+
+          {/* Active-tab badge: a solid circle rising out of the hill, always
+              sharing the exact same measured center as the hill itself.
+              Rendered AFTER the bar div on purpose: the hill is a raised,
+              filled bump (not a cutout), so if the badge sat behind the bar
+              in stacking order the bar's own fill would cover most of it —
+              it has to paint on top to actually sit "on" the hill. */}
+          {ready && (
+            <motion.div
+              className="absolute rounded-full bg-cortex-red shadow-lg shadow-cortex-red/40 flex items-center justify-center text-white pointer-events-none"
+              style={{
+                width: BADGE_RADIUS * 2,
+                height: BADGE_RADIUS * 2,
+                x: badgeX,
+                top: -8,
+              }}
+            >
+              {activeTab.renderIcon('', 'chip')}
+            </motion.div>
+          )}
         </div>
       </div>
 
