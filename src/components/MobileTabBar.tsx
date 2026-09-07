@@ -23,56 +23,62 @@ interface LiquidTab {
 
 const ICON_SIZE = 'w-5 h-5';
 
-const CHIP_RADIUS = 24;
-// How far the chip pokes up above the bar's top edge. Pages that render
-// this bar must reserve matching bottom clearance (pb-28) so scrolling
-// content never ends up underneath the floating chip.
-const CHIP_PROTRUSION = CHIP_RADIUS;
-// Default (max) notch dimensions, used whenever a tab's true center has
-// room for them. Never used to shift the notch's position — only its size
-// adapts (see computeNotchGeometry), so the notch always sits exactly on
+// The active tab's icon sits in a small solid badge that rises out of a
+// smooth hill in the bar's own silhouette (not a separate floating card
+// dipped into a valley) — matching a standard "liquid tab bar" reference.
+const BADGE_RADIUS = 20;
+// How far above the bar's own flat top edge the hill peaks. Pages that
+// render this bar must reserve matching bottom clearance (pb-28) so
+// scrolling content never ends up underneath the raised badge.
+const BUMP_HEIGHT = 26;
+// Default (max) hill dimensions, used whenever a tab's true center has
+// room for them. Never used to shift the hill's position — only its size
+// adapts (see computeBumpGeometry), so the hill always sits exactly on
 // the active tab's real center, for every tab, on every screen width.
-const NOTCH_RADIUS = 22;
-const NOTCH_DEPTH = 28;
-const NOTCH_CURVE = 14;
+const BUMP_RADIUS = 22;
+const BUMP_CURVE = 14;
 
 /**
- * The SVG notch must not cross the bar's own rounded end caps (radius `cr`
- * from each side). Rather than moving the notch off the tab's true center
- * to make room — which is what caused the earlier misalignment — this
- * shrinks the notch's horizontal reach (radius + curve) to whatever space
- * is actually available on its tighter side, keeping its center exact.
+ * The SVG hill must not cross the bar's own rounded end caps (radius `cr`
+ * from each side). Rather than moving the hill off the tab's true center
+ * to make room, this shrinks its horizontal reach (radius + curve) to
+ * whatever space is actually available on its tighter side, keeping its
+ * center exact.
  */
-function computeNotchGeometry(width: number, height: number, notchX: number): { radius: number; curve: number } {
-  const cr = height / 2;
-  const desiredHalfWidth = NOTCH_RADIUS + NOTCH_CURVE;
-  const available = Math.min(notchX - cr, width - cr - notchX);
+function computeBumpGeometry(width: number, pillHeight: number, bumpX: number): { radius: number; curve: number } {
+  const cr = pillHeight / 2;
+  const desiredHalfWidth = BUMP_RADIUS + BUMP_CURVE;
+  const available = Math.min(bumpX - cr, width - cr - bumpX);
   const halfWidth = Math.max(0, Math.min(desiredHalfWidth, available));
   const scale = halfWidth / desiredHalfWidth;
-  return { radius: NOTCH_RADIUS * scale, curve: NOTCH_CURVE * scale };
+  return { radius: BUMP_RADIUS * scale, curve: BUMP_CURVE * scale };
 }
 
 /**
  * Builds the bar's outline as a single SVG path: a rounded pill whose top
- * edge dips into a smooth valley centered exactly at `notchX` — the active
- * tab's real, measured center (see updateIndicator). The valley's own size
- * is derived from `notchX` itself so it never has to move to fit.
+ * edge rises into a smooth hill centered exactly at `bumpX` — the active
+ * tab's real, measured center (see updateIndicator). `pillHeight` is the
+ * bar's own height *excluding* the hill's extra headroom; the path's total
+ * height is `pillHeight + BUMP_HEIGHT`, with the pill itself starting at
+ * y = BUMP_HEIGHT (the hill peaks at y = 0).
  */
-function buildNavPath(width: number, height: number, notchX: number): string {
-  const cr = height / 2;
-  const nx = notchX;
-  const { radius, curve } = computeNotchGeometry(width, height, notchX);
+function buildNavPath(width: number, pillHeight: number, bumpX: number): string {
+  const cr = pillHeight / 2;
+  const nx = bumpX;
+  const top = BUMP_HEIGHT;
+  const bottom = top + pillHeight;
+  const { radius, curve } = computeBumpGeometry(width, pillHeight, bumpX);
 
   return `
-    M ${cr},0
-    L ${nx - radius - curve},0
-    C ${nx - radius - curve * 0.4},0 ${nx - radius},${NOTCH_DEPTH * 0.9} ${nx - radius * 0.55},${NOTCH_DEPTH}
-    A ${radius || 0.01},${radius || 0.01} 0 0 0 ${nx + radius * 0.55},${NOTCH_DEPTH}
-    C ${nx + radius},${NOTCH_DEPTH * 0.9} ${nx + radius + curve * 0.4},0 ${nx + radius + curve},0
-    L ${width - cr},0
-    A ${cr},${cr} 0 0 1 ${width - cr},${height}
-    L ${cr},${height}
-    A ${cr},${cr} 0 0 1 ${cr},0
+    M ${cr},${top}
+    L ${nx - radius - curve},${top}
+    C ${nx - radius - curve * 0.4},${top} ${nx - radius},${top - BUMP_HEIGHT * 0.9} ${nx - radius * 0.55},${top - BUMP_HEIGHT}
+    A ${radius || 0.01},${radius || 0.01} 0 0 1 ${nx + radius * 0.55},${top - BUMP_HEIGHT}
+    C ${nx + radius},${top - BUMP_HEIGHT * 0.9} ${nx + radius + curve * 0.4},${top} ${nx + radius + curve},${top}
+    L ${width - cr},${top}
+    A ${cr},${cr} 0 0 1 ${width - cr},${bottom}
+    L ${cr},${bottom}
+    A ${cr},${cr} 0 0 1 ${cr},${top}
     Z
   `.trim();
 }
@@ -171,7 +177,10 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     // hardcoded offset.
     const center = btnRect.left - barRect.left + btnRect.width / 2;
     setIndicatorX(center);
-    setBarSize({ width: barRect.width, height: barRect.height });
+    // barRect.height includes the extra top headroom reserved for the hill
+    // (see the bar's paddingTop below); buildNavPath wants just the pill's
+    // own height and adds BUMP_HEIGHT back internally.
+    setBarSize({ width: barRect.width, height: barRect.height - BUMP_HEIGHT });
   };
 
   useEffect(() => {
@@ -245,7 +254,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     <>
       <div className="md:hidden fixed bottom-3 inset-x-0 z-40 px-4 pointer-events-none">
         <div className="max-w-md mx-auto relative">
-          {/* Hidden clip-path definition: the bar's own shape morphs to cradle the chip */}
+          {/* Hidden clip-path definition: the bar's own silhouette rises into a hill under the active tab */}
           <svg className="absolute w-0 h-0">
             <clipPath id="liquid-nav-clip" clipPathUnits="userSpaceOnUse">
               <path
@@ -256,49 +265,57 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
             </clipPath>
           </svg>
 
-          {/* Floating chip: the active icon, nested in the morphed notch */}
+          {/* Active-tab badge: a solid circle rising out of the hill, always
+              sharing the exact same measured center as the hill itself. */}
           {ready && (
             <div
-              className="absolute w-12 h-12 rounded-full glass-card border border-white/70 dark:border-white/15 shadow-lg flex items-center justify-center text-cortex-red pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: -CHIP_PROTRUSION }}
+              className="absolute rounded-full bg-cortex-red shadow-lg shadow-cortex-red/40 flex items-center justify-center text-white pointer-events-none liquid-follow"
+              style={{
+                width: BADGE_RADIUS * 2,
+                height: BADGE_RADIUS * 2,
+                transform: `translateX(${indicatorX! - BADGE_RADIUS}px)`,
+                top: -6,
+              }}
             >
               {activeTab.renderIcon('', 'chip')}
             </div>
           )}
 
-          {/* Label, crisp, sitting just below the bar under the active tab */}
-          {ready && (
-            <div
-              className="absolute w-12 text-center pointer-events-none liquid-follow"
-              style={{ transform: `translateX(${indicatorX! - CHIP_RADIUS}px)`, top: barSize.height + 4 }}
-            >
-              <span className="text-[9px] font-semibold text-cortex-red whitespace-nowrap">{activeTab.label}</span>
-            </div>
-          )}
+          {/* Thin accent line hugging the pill's bottom edge — a sibling, not a
+              border on the clipped bar itself, so the clip-path can never cut it off. */}
+          <div
+            className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-cortex-red/70 pointer-events-none"
+            aria-hidden="true"
+          />
 
           <div
             ref={barRef}
-            className="glass-panel shadow-2xl px-2 py-1.5 border border-white/60 dark:border-white/10 pointer-events-auto grid grid-cols-5 items-center gap-0.5 relative"
-            style={{ borderRadius: 9999, clipPath: ready ? 'url(#liquid-nav-clip)' : undefined }}
+            className="glass-panel shadow-2xl border border-white/60 dark:border-white/10 px-2 pb-1.5 pointer-events-auto grid grid-cols-5 items-center gap-0.5 relative"
+            style={{ borderRadius: 9999, paddingTop: BUMP_HEIGHT, clipPath: ready ? 'url(#liquid-nav-clip)' : undefined }}
           >
             {liquidTabs.map((tab) => (
               <button
                 key={tab.key}
                 ref={(el) => { tabRefs.current[tab.key] = el; }}
                 onClick={tab.onClick}
-                className="flex items-center justify-center h-11 w-14 mx-auto rounded-full text-ink/55 hover:text-ink transition-colors"
+                className="flex flex-col items-center justify-center gap-0.5 h-11 w-14 mx-auto rounded-full transition-colors"
               >
-                {tab.renderIcon(`transition-opacity duration-200 ${tab.active ? 'opacity-0' : 'opacity-100'}`, 'row')}
+                <span className={`transition-opacity duration-200 ${tab.active ? 'opacity-0' : 'opacity-100 text-ink/55'}`}>
+                  {tab.renderIcon('', 'row')}
+                </span>
+                <span className={`text-[9px] font-medium ${tab.active ? 'text-cortex-red font-semibold' : 'text-ink/55'}`}>
+                  {tab.label}
+                </span>
               </button>
             ))}
 
             <button
               onClick={() => setMoreOpen(true)}
-              className="flex flex-col items-center justify-center h-11 w-14 mx-auto rounded-full text-ink/55 hover:text-ink transition-colors"
+              className="flex flex-col items-center justify-center gap-0.5 h-11 w-14 mx-auto rounded-full text-ink/55 hover:text-ink transition-colors"
               aria-label="Plus d’options"
             >
               <Menu className={ICON_SIZE} />
-              <span className="text-[9px] font-medium mt-0.5">Menu</span>
+              <span className="text-[9px] font-medium">Menu</span>
             </button>
           </div>
         </div>
