@@ -26,17 +26,19 @@ const ICON_SIZE = 'w-5 h-5';
 // The active tab's icon sits in a small solid badge that rises out of a
 // smooth hill in the bar's own silhouette (not a separate floating card
 // dipped into a valley) — matching a standard "liquid tab bar" reference.
-const BADGE_RADIUS = 20;
+const BADGE_RADIUS = 26;
 // How far above the bar's own flat top edge the hill peaks. Pages that
 // render this bar must reserve matching bottom clearance (pb-28) so
-// scrolling content never ends up underneath the raised badge.
-const BUMP_HEIGHT = 26;
+// scrolling content never ends up underneath the raised badge. Tall on
+// purpose — a shallow bump reads as barely-there; the reference look is a
+// pronounced peak the badge visibly sits inside.
+const BUMP_HEIGHT = 40;
 // Default (max) hill dimensions, used whenever a tab's true center has
 // room for them. Never used to shift the hill's position — only its size
 // adapts (see computeBumpGeometry), so the hill always sits exactly on
 // the active tab's real center, for every tab, on every screen width.
-const BUMP_RADIUS = 22;
-const BUMP_CURVE = 14;
+const BUMP_RADIUS = 24;
+const BUMP_CURVE = 20;
 
 /**
  * The SVG hill must not cross the bar's own rounded end caps (radius `cr`
@@ -274,7 +276,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
                 width: BADGE_RADIUS * 2,
                 height: BADGE_RADIUS * 2,
                 transform: `translateX(${indicatorX! - BADGE_RADIUS}px)`,
-                top: -6,
+                top: -8,
               }}
             >
               {activeTab.renderIcon('', 'chip')}
@@ -290,7 +292,12 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
 
           <div
             ref={barRef}
-            className="glass-panel shadow-2xl border border-white/60 dark:border-white/10 px-2 pb-1.5 pointer-events-auto grid grid-cols-5 items-center gap-0.5 relative"
+            // Solid and opaque on purpose (not the translucent `glass-panel`
+            // used elsewhere): a blurred/translucent bar lets scrolling page
+            // content show faintly through it, which reads as a rendering
+            // glitch. Always dark regardless of site theme, like a native
+            // app's tab bar.
+            className="bg-[#161320] shadow-2xl border border-white/10 px-2 pb-1.5 pointer-events-auto grid grid-cols-5 items-center gap-0.5 relative"
             style={{ borderRadius: 9999, paddingTop: BUMP_HEIGHT, clipPath: ready ? 'url(#liquid-nav-clip)' : undefined }}
           >
             {liquidTabs.map((tab) => (
