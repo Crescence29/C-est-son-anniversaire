@@ -324,14 +324,22 @@
   cursor: grabbing;
 }
 
-/* Liquid morphing navigation: the bar's own outline dips into a smooth
-   valley that glides to the active tab, cradling a floating icon chip. */
-.liquid-nav-path {
-  fill: rgba(var(--glass-bg), 0.92);
+/* Frosted-glass bottom nav: the active tab gets a soft red glow and a ring
+   that pulses outward once per cycle — no shape or icon moves position. */
+@keyframes glass-pulse {
+  0% { transform: scale(0.85); opacity: 0.9; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
 
-.liquid-follow {
-  transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+.glass-pulse-ring {
+  animation: glass-pulse 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-pulse-ring {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* Bottom sheet / modal entrance used by the mobile "Menu" button */
