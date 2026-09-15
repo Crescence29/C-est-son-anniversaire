@@ -237,17 +237,14 @@ function toAccountSummary(u: (typeof db.users)[number]) {
 }
 
 // GET /api/developer/accounts
-// Visibilité complète (client compris) sur demande explicite du client :
-// le développeur doit tout voir. Seuls les comptes 'developer' restent
-// hors de cette liste (rien à gérer sur soi-même ici). Les actions de
-// gestion plus bas (créer, changer de rôle, suspendre, réinitialiser...)
-// restent volontairement limitées aux comptes internes (staff/admin) :
-// "gérer la structure des comptes" ne veut pas dire agir sur les comptes
-// clients, seulement pouvoir les consulter.
+// Visibilité complète sur demande explicite du client : le développeur doit
+// tout voir, y compris les autres comptes développeur s'il y en a. Les
+// actions de gestion plus bas (créer, changer de rôle, suspendre,
+// réinitialiser...) restent volontairement limitées aux comptes internes
+// (staff/admin) : "gérer la structure des comptes" ne veut pas dire agir
+// sur les comptes clients ou développeur, seulement pouvoir les consulter.
 router.get('/accounts', (req: AuthRequest, res: Response): void => {
-  const accounts = db.users
-    .filter((u) => u.role !== 'developer')
-    .map(toAccountSummary);
+  const accounts = db.users.map(toAccountSummary);
   res.json({ accounts });
 });
 
@@ -322,9 +319,9 @@ function findInternalAccount(id: string, res: Response) {
 }
 
 // Pour les endpoints en lecture seule uniquement (voir un compte, voir ses
-// sessions) : tout compte hors 'developer' est consultable.
+// sessions) : n'importe quel compte est consultable.
 function findAnyAccount(id: string, res: Response) {
-  const user = db.users.find((u) => u.id === id && u.role !== 'developer');
+  const user = db.users.find((u) => u.id === id);
   if (!user) {
     res.status(404).json({ error: 'Compte introuvable.' });
     return null;

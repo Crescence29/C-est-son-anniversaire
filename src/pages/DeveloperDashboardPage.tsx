@@ -481,7 +481,9 @@ export const DeveloperDashboardPage: React.FC = () => {
                                   <option value="admin">Admin</option>
                                 </select>
                               ) : (
-                                <span className="text-[11px] font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>Client</span>
+                                <span className="text-[11px] font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>
+                                  {a.role === 'developer' ? 'Développeur' : 'Client'}
+                                </span>
                               )}
                             </td>
                             <td className="px-4 py-3">
