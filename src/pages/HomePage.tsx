@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS: SiteSettings = {
   social_tiktok: '',
   social_linkedin: '',
   social_live_stream: '',
+  maintenance_mode: false,
+  maintenance_message: '',
 };
 const HERO_SLIDE_DURATION_MS = 6000;
 const VIDEO_AUTOSCROLL_INTERVAL_MS = 5000;

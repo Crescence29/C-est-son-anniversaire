@@ -25,6 +25,7 @@ import { db } from './src/server/dataStore.ts';
 import { recordRequest, recordTiming, recordError, recordEndpointHit } from './src/server/metrics.ts';
 import { recordLog } from './src/server/logs.ts';
 import logsRouter from './src/server/routes/logs.ts';
+import { maintenanceGate } from './src/server/maintenanceMode.ts';
 
 async function startServer() {
   const app = express();
@@ -121,6 +122,11 @@ async function startServer() {
     }) as typeof res.json;
     next();
   });
+
+  // Bloque l'API publique/métier pendant la maintenance, en laissant passer
+  // l'authentification et /api/developer/* pour que le développeur puisse
+  // toujours se connecter et désactiver la maintenance lui-même.
+  app.use(maintenanceGate);
 
   // API Routes
   app.get('/api/health', (req, res) => {

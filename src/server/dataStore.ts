@@ -34,6 +34,8 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   social_tiktok: 'https://vm.tiktok.com/ZS9Brm9XQDjB7-TbCqm/',
   social_linkedin: '',
   social_live_stream: '',
+  maintenance_mode: false,
+  maintenance_message: 'Nous effectuons une maintenance. Merci de revenir dans quelques instants.',
 };
 
 interface DbConfig {

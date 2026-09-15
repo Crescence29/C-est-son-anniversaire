@@ -503,6 +503,80 @@ router.get('/deployment/info', (req: AuthRequest, res: Response): void => {
 });
 
 // ---------------------------------------------------------------------------
+// Configuration de la solution — vue en lecture seule sur les réglages
+// techniques réels ; les variables sensibles (mots de passe, clés secrètes)
+// ne sont jamais renvoyées en clair, seulement leur présence. Le seul
+// réglage réellement modifiable ici est le mode maintenance.
+// ---------------------------------------------------------------------------
+
+const SENSITIVE_ENV_KEYS = ['DB_USER', 'DB_PASSWORD', 'JWT_SECRET', 'WEBHOOK_SECRET', 'CINETPAY_API_KEY', 'MOBILE_MONEY_API_KEY', 'MOBILE_MONEY_SECRET', 'MTN_API_KEY', 'ORANGE_API_KEY', 'MOOV_API_KEY'];
+
+router.get('/config', (req: AuthRequest, res: Response): void => {
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  const mainUrl = process.env.APP_URL || (railwayDomain ? `https://${railwayDomain}` : null);
+  const cdnConfigured = Boolean(process.env.CDN_URL);
+  const externalStorageConfigured = Boolean(process.env.AWS_S3_BUCKET || process.env.CLOUDINARY_URL);
+  const externalPaymentServicesConfigured = [process.env.MTN_API_KEY, process.env.ORANGE_API_KEY, process.env.MOOV_API_KEY, process.env.CINETPAY_API_KEY].filter(Boolean).length;
+
+  res.json({
+    general: {
+      appName: 'C’est son anniversaire',
+      mainUrl,
+      apiUrl: mainUrl ? `${mainUrl}/api` : null,
+      apiVersion: 'v1',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      defaultLanguage: 'Français (fr)',
+    },
+    systemEmail: {
+      configured: false,
+      detail: "Aucun service d'e-mail transactionnel n'est configuré (pas de SMTP ni de fournisseur d'e-mail branché) : l'application n'envoie aucun e-mail aujourd'hui.",
+    },
+    storage: {
+      configured: externalStorageConfigured,
+      detail: externalStorageConfigured ? 'Stockage externe configuré.' : "Aucun stockage de fichiers propre : les médias sont des liens externes (voir l'onglet Fichiers & médias).",
+    },
+    cdn: {
+      configured: cdnConfigured,
+      detail: cdnConfigured ? 'CDN configuré (CDN_URL).' : 'Aucun CDN configuré.',
+    },
+    externalServices: {
+      configuredCount: externalPaymentServicesConfigured,
+      totalCount: 4,
+      detail: `${externalPaymentServicesConfigured} sur 4 fournisseurs de paiement configurés (voir l'onglet API).`,
+    },
+    maintenance: {
+      enabled: db.siteSettings.maintenance_mode,
+      message: db.siteSettings.maintenance_message,
+    },
+    sensitive: SENSITIVE_ENV_KEYS.map((key) => ({ key, configured: Boolean(process.env[key]) })),
+  });
+});
+
+router.put('/config/maintenance', (req: AuthRequest, res: Response): void => {
+  const { enabled, message } = req.body || {};
+  if (typeof enabled !== 'boolean') {
+    res.status(400).json({ error: 'Le champ "enabled" doit être un booléen.' });
+    return;
+  }
+
+  db.updateSiteSettings({
+    maintenance_mode: enabled,
+    ...(typeof message === 'string' && message.trim() ? { maintenance_message: message.trim() } : {}),
+  });
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'maintenance_mode_changed',
+    details: enabled ? 'Mode maintenance activé.' : 'Mode maintenance désactivé.',
+    ip_address: req.ip,
+  });
+
+  res.json({ maintenance: { enabled: db.siteSettings.maintenance_mode, message: db.siteSettings.maintenance_message } });
+});
+
+// ---------------------------------------------------------------------------
 // Comptes : le développeur voit tous les comptes (client compris), mais les
 // actions de gestion (créer, changer de rôle, permissions, statut, accès)
 // restent réservées aux comptes internes (staff/admin) — la structure des

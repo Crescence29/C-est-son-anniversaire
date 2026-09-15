@@ -78,6 +78,8 @@ export interface SiteSettings {
   social_tiktok: string;
   social_linkedin: string;
   social_live_stream: string;
+  maintenance_mode: boolean;
+  maintenance_message: string;
 }
 
 export interface FaqItem {
@@ -544,4 +546,32 @@ export interface DeploymentInfo {
   environments: DeploymentEnvironmentInfo[];
   deploymentStatus: { state: ServiceHealthState; uptimeSeconds: number; serverStartedAt: string };
   rollback: { available: boolean; reason: string };
+}
+
+// ---------------------------------------------------------------------------
+// Configuration de la solution — voir src/server/routes/developer.ts
+// (/config, PUT /config/maintenance). Les variables sensibles ne sont
+// jamais renvoyées en clair, seulement leur présence (`configured`).
+// ---------------------------------------------------------------------------
+
+export interface SensitiveConfigEntry {
+  key: string;
+  configured: boolean;
+}
+
+export interface ConfigInfo {
+  general: {
+    appName: string;
+    mainUrl: string | null;
+    apiUrl: string | null;
+    apiVersion: string;
+    timezone: string;
+    defaultLanguage: string;
+  };
+  systemEmail: { configured: boolean; detail: string };
+  storage: { configured: boolean; detail: string };
+  cdn: { configured: boolean; detail: string };
+  externalServices: { configuredCount: number; totalCount: number; detail: string };
+  maintenance: { enabled: boolean; message: string };
+  sensitive: SensitiveConfigEntry[];
 }

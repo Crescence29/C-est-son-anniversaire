@@ -4,7 +4,7 @@ import {
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
-  Rocket, GitCommit, ArrowDown, Lock,
+  Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -16,7 +16,7 @@ import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
   LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
-  MediaSummary, MediaLinkCheckResult, DeploymentInfo,
+  MediaSummary, MediaLinkCheckResult, DeploymentInfo, ConfigInfo,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -74,6 +74,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   database_integrity_check: Database,
   media_orphans_cleaned: Trash2,
   deployment: Rocket,
+  maintenance_mode_changed: SettingsIconAlias,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -92,6 +93,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   database_integrity_check: 'Vérification d’intégrité de la base lancée',
   media_orphans_cleaned: 'Références médias orphelines nettoyées',
   deployment: 'Nouveau déploiement',
+  maintenance_mode_changed: 'Mode maintenance modifié',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -113,7 +115,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -458,6 +460,36 @@ export const DeveloperDashboardPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // ---- Configuration de la solution ----
+  const [config, setConfig] = useState<ConfigInfo | null>(null);
+  const [maintenanceMessageDraft, setMaintenanceMessageDraft] = useState('');
+  const [maintenanceSaving, setMaintenanceSaving] = useState(false);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await api.get<ConfigInfo>('/developer/config');
+      setConfig(res);
+      setMaintenanceMessageDraft(res.maintenance.message);
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => { fetchConfig(); }, []);
+
+  const toggleMaintenance = async (enabled: boolean) => {
+    if (enabled && !window.confirm("Activer le mode maintenance ? Le site public deviendra inaccessible pour les clients (l'accès développeur reste actif).")) return;
+    setMaintenanceSaving(true);
+    try {
+      const res = await api.put<{ maintenance: { enabled: boolean; message: string } }>('/developer/config/maintenance', { enabled, message: maintenanceMessageDraft });
+      setConfig((prev) => (prev ? { ...prev, maintenance: res.maintenance } : prev));
+    } catch (err: any) {
+      alert(err?.message || 'Échec de la mise à jour du mode maintenance.');
+    } finally {
+      setMaintenanceSaving(false);
+    }
+  };
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -579,6 +611,7 @@ export const DeveloperDashboardPage: React.FC = () => {
         { key: 'database', label: 'Base de données', icon: Database },
         { key: 'media', label: 'Fichiers & médias', icon: ImageIcon },
         { key: 'deployment', label: 'Déploiement', icon: Rocket },
+        { key: 'config', label: 'Configuration', icon: Sliders },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -595,6 +628,7 @@ export const DeveloperDashboardPage: React.FC = () => {
     database: { title: 'Base de données', subtitle: 'État MySQL en direct, tables, migrations et vérification d’intégrité' },
     media: { title: 'Fichiers & médias', subtitle: 'Audit des liens réels (aucun fichier n’est hébergé sur ce serveur)' },
     deployment: { title: 'Déploiement', subtitle: 'Version réellement déployée, historique des commits, environnements' },
+    config: { title: 'Configuration', subtitle: 'Réglages techniques réels — les valeurs sensibles restent masquées' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -1159,6 +1193,121 @@ export const DeveloperDashboardPage: React.FC = () => {
                     <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{deployment.rollback.reason}</p>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'config' && (
+            <div className="space-y-6">
+              {!config ? (
+                <div className="text-center py-8 text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</div>
+              ) : (
+                <>
+                  <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <h3 className="font-serif font-bold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                      <Sliders className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                      Général
+                    </h3>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {[
+                        { label: 'Nom application', value: config.general.appName },
+                        { label: 'URL principale', value: config.general.mainUrl || 'Non définie (APP_URL absente)' },
+                        { label: 'URL API', value: config.general.apiUrl || '—' },
+                        { label: 'Version API', value: config.general.apiVersion },
+                        { label: 'Fuseau horaire', value: config.general.timezone },
+                        { label: 'Langue par défaut', value: config.general.defaultLanguage },
+                      ].map((row) => (
+                        <div key={row.label} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--dd-panel-hover)' }}>
+                          <span style={{ color: 'var(--dd-ink-faint)' }}>{row.label}</span>
+                          <span className="font-mono text-right truncate ml-3" style={{ color: 'var(--dd-ink)' }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    {[
+                      { label: 'Email système', ...config.systemEmail },
+                      { label: 'Stockage', ...config.storage },
+                      { label: 'CDN', ...config.cdn },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`w-2 h-2 rounded-full ${item.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                          <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{item.label}</span>
+                        </div>
+                        <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{item.detail}</p>
+                      </div>
+                    ))}
+                    <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`w-2 h-2 rounded-full ${config.externalServices.configuredCount > 0 ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                        <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Services externes</span>
+                      </div>
+                      <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{config.externalServices.detail}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                        <Power className="w-4 h-4" style={{ color: config.maintenance.enabled ? '#f43f5e' : 'var(--dd-accent)' }} />
+                        Mode maintenance
+                      </h3>
+                      <span className="text-xs font-bold" style={{ color: config.maintenance.enabled ? '#f43f5e' : 'var(--dd-ink-faint)' }}>
+                        {config.maintenance.enabled ? 'ACTIVÉ' : 'Désactivé'}
+                      </span>
+                    </div>
+                    <textarea
+                      value={maintenanceMessageDraft}
+                      onChange={(e) => setMaintenanceMessageDraft(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl text-xs mb-3"
+                      style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                      placeholder="Message affiché pendant la maintenance"
+                    />
+                    <div className="flex gap-2">
+                      {config.maintenance.enabled ? (
+                        <button
+                          onClick={() => toggleMaintenance(false)}
+                          disabled={maintenanceSaving}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold disabled:opacity-50"
+                          style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}
+                        >
+                          Désactiver la maintenance
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => toggleMaintenance(true)}
+                          disabled={maintenanceSaving}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold disabled:opacity-50"
+                          style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}
+                        >
+                          Activer la maintenance
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] mt-3" style={{ color: 'var(--dd-ink-faint)' }}>
+                      Une fois activé, le site public et l'espace régie/administration renvoient une erreur de maintenance ; seuls la connexion et le tableau de bord développeur restent accessibles pour pouvoir la désactiver.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <h3 className="font-serif font-bold text-base mb-3 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                      <EyeOff className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                      Variables sensibles
+                    </h3>
+                    <p className="text-[11px] mb-3" style={{ color: 'var(--dd-ink-faint)' }}>Jamais affichées en clair — seule leur présence est indiquée.</p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {config.sensitive.map((s) => (
+                        <div key={s.key} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--dd-panel-hover)' }}>
+                          <span className="font-mono" style={{ color: 'var(--dd-ink-soft)' }}>{s.key}</span>
+                          <span className="font-mono" style={{ color: 'var(--dd-ink)' }}>{s.configured ? '••••••••' : 'non défini'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}
