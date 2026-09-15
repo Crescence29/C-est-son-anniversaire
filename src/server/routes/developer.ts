@@ -13,6 +13,7 @@ import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
 import { collectMediaReferences, getMediaSummary, checkLinks, ALLOWED_FORMATS } from '../mediaAudit.ts';
+import { getDeployInfo } from '../deployInfo.ts';
 import crypto from 'crypto';
 
 const router = Router();
@@ -426,6 +427,66 @@ router.post('/media/cleanup-orphan-references', (req: AuthRequest, res: Response
   });
 
   res.json({ deletedDeliverables: orphanDeliverableIds.size, deletedFavorites: orphanFavoriteIds.size });
+});
+
+// ---------------------------------------------------------------------------
+// Déploiement et versions — le commit réellement déployé (capturé au
+// moment du build, voir src/server/deployInfo.ts) et les derniers commits
+// comme historique réel. Pas de rollback automatique depuis ce tableau de
+// bord : un redéploiement vers une version antérieure se fait volontairement
+// à la main (bouton « Redeploy » sur un déploiement passé dans le tableau
+// de bord Railway, ou `git revert` + nouveau déploiement) pour ne jamais
+// couper la production sur un simple clic sans confirmation humaine complète.
+// ---------------------------------------------------------------------------
+
+router.get('/deployment/info', (req: AuthRequest, res: Response): void => {
+  const deployInfo = getDeployInfo();
+  const metrics = getMetricsSnapshot();
+  const railwayEnvironment = process.env.RAILWAY_ENVIRONMENT_NAME || null;
+  const railwayService = process.env.RAILWAY_SERVICE_NAME || null;
+
+  res.json({
+    currentVersion: {
+      appVersion: getAppVersion(),
+      commitSha: deployInfo.headShort || null,
+      commitMessage: deployInfo.commits[0]?.message || null,
+      commitAuthor: deployInfo.commits[0]?.author || null,
+      deployedAt: metrics.serverStartedAt,
+    },
+    history: deployInfo.commits.map((c, i) => ({ ...c, isCurrent: i === 0 })),
+    environments: [
+      {
+        key: 'development',
+        name: 'Développement',
+        detail: 'Poste local (WAMP + MySQL locale) — pas de déploiement, exécution directe du code source.',
+        exists: true,
+        active: !railwayEnvironment,
+      },
+      {
+        key: 'staging',
+        name: 'Test / Staging',
+        detail: "N'existe pas : il n'y a qu'un seul environnement Railway aujourd'hui, directement en production. Les migrations sont testées manuellement avant application en production.",
+        exists: false,
+        active: false,
+      },
+      {
+        key: 'production',
+        name: 'Production',
+        detail: railwayService ? `Railway — service « ${railwayService} » (${railwayEnvironment || 'production'})` : 'Railway',
+        exists: true,
+        active: Boolean(railwayEnvironment),
+      },
+    ],
+    deploymentStatus: {
+      state: 'ok',
+      uptimeSeconds: metrics.uptimeSeconds,
+      serverStartedAt: metrics.serverStartedAt,
+    },
+    rollback: {
+      available: false,
+      reason: "Pas de rollback automatique par sécurité : un clic malheureux ne doit pas pouvoir couper la production. Pour revenir à une version antérieure, utilisez le bouton « Redeploy » sur un déploiement passé dans le tableau de bord Railway, ou faites un `git revert` suivi d'un nouveau déploiement.",
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------

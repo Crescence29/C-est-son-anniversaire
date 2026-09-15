@@ -507,3 +507,41 @@ export interface MediaLinkCheckResult extends MediaReference {
   contentLengthBytes: number | null;
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Déploiement et versions — voir src/server/deployInfo.ts et
+// src/server/routes/developer.ts (/deployment/info). Le commit et
+// l'historique sont réels (capturés au moment du build) ; il n'y a pas de
+// rollback automatique par sécurité.
+// ---------------------------------------------------------------------------
+
+export interface DeployCommitEntry {
+  sha: string;
+  shortSha: string;
+  date: string;
+  author: string;
+  message: string;
+  isCurrent: boolean;
+}
+
+export interface DeploymentEnvironmentInfo {
+  key: 'development' | 'staging' | 'production';
+  name: string;
+  detail: string;
+  exists: boolean;
+  active: boolean;
+}
+
+export interface DeploymentInfo {
+  currentVersion: {
+    appVersion: string;
+    commitSha: string | null;
+    commitMessage: string | null;
+    commitAuthor: string | null;
+    deployedAt: string;
+  };
+  history: DeployCommitEntry[];
+  environments: DeploymentEnvironmentInfo[];
+  deploymentStatus: { state: ServiceHealthState; uptimeSeconds: number; serverStartedAt: string };
+  rollback: { available: boolean; reason: string };
+}

@@ -4,6 +4,7 @@ import {
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
+  Rocket, GitCommit, ArrowDown, Lock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -15,7 +16,7 @@ import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
   LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
-  MediaSummary, MediaLinkCheckResult,
+  MediaSummary, MediaLinkCheckResult, DeploymentInfo,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -110,7 +111,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -437,6 +438,24 @@ export const DeveloperDashboardPage: React.FC = () => {
 
   const MEDIA_KIND_LABEL: Record<string, string> = { image: 'Images', video: 'Vidéos', audio: 'Audio', document: 'Documents', autre: 'Autres' };
 
+  // ---- Déploiement et versions ----
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+
+  const fetchDeployment = async () => {
+    try {
+      const res = await api.get<DeploymentInfo>('/developer/deployment/info');
+      setDeployment(res);
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => {
+    fetchDeployment();
+    const interval = setInterval(fetchDeployment, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -557,6 +576,7 @@ export const DeveloperDashboardPage: React.FC = () => {
         { key: 'logs', label: `Journal technique (${logs.length})`, icon: ScrollText },
         { key: 'database', label: 'Base de données', icon: Database },
         { key: 'media', label: 'Fichiers & médias', icon: ImageIcon },
+        { key: 'deployment', label: 'Déploiement', icon: Rocket },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -572,6 +592,7 @@ export const DeveloperDashboardPage: React.FC = () => {
     logs: { title: 'Journal technique', subtitle: 'Erreurs serveur, API, paiement, synchronisation, authentification et JavaScript' },
     database: { title: 'Base de données', subtitle: 'État MySQL en direct, tables, migrations et vérification d’intégrité' },
     media: { title: 'Fichiers & médias', subtitle: 'Audit des liens réels (aucun fichier n’est hébergé sur ce serveur)' },
+    deployment: { title: 'Déploiement', subtitle: 'Version réellement déployée, historique des commits, environnements' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -1041,6 +1062,102 @@ export const DeveloperDashboardPage: React.FC = () => {
                   </p>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'deployment' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <Rocket className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Version en production
+                  </h3>
+                  <button onClick={fetchDeployment} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                    <RefreshCw className="w-3 h-3" /> Actualiser
+                  </button>
+                </div>
+                {!deployment ? (
+                  <div className="text-center py-8 text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span className="text-sm font-bold font-mono" style={{ color: 'var(--dd-ink)' }}>
+                        {deployment.currentVersion.commitSha ? `#${deployment.currentVersion.commitSha}` : `v${deployment.currentVersion.appVersion}`}
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>· déployée le {new Date(deployment.currentVersion.deployedAt).toLocaleString('fr-FR')}</span>
+                    </div>
+                    {deployment.currentVersion.commitMessage && (
+                      <p className="text-xs mb-1" style={{ color: 'var(--dd-ink-soft)' }}>
+                        « {deployment.currentVersion.commitMessage} »{deployment.currentVersion.commitAuthor ? ` — ${deployment.currentVersion.commitAuthor}` : ''}
+                      </p>
+                    )}
+                    <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>
+                      package.json : v{deployment.currentVersion.appVersion} · en ligne depuis {Math.floor(deployment.deploymentStatus.uptimeSeconds / 3600)} h
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {deployment && (
+                <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <h3 className="font-serif font-bold text-base mb-4" style={{ color: 'var(--dd-ink)' }}>Environnements</h3>
+                  <div className="space-y-2">
+                    {deployment.environments.map((env, i) => (
+                      <React.Fragment key={env.key}>
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--dd-panel-hover)', opacity: env.exists ? 1 : 0.6 }}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${env.active ? 'bg-emerald-400' : env.exists ? 'bg-white/25' : 'bg-red-400/50'}`} />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold" style={{ color: 'var(--dd-ink)' }}>
+                              {env.name.toUpperCase()} {!env.exists && <span className="font-normal" style={{ color: 'var(--dd-ink-faint)' }}>(n'existe pas)</span>}
+                            </div>
+                            <div className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{env.detail}</div>
+                          </div>
+                        </div>
+                        {i < deployment.environments.length - 1 && (
+                          <div className="flex justify-center"><ArrowDown className="w-3.5 h-3.5" style={{ color: 'var(--dd-ink-faint)' }} /></div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {deployment && (
+                <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <h3 className="font-serif font-bold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <GitCommit className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Historique des versions ({deployment.history.length})
+                  </h3>
+                  {deployment.history.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Historique indisponible (généré au moment du build).</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                      {deployment.history.map((c) => (
+                        <div key={c.sha} className="flex items-start gap-3 px-3 py-2 rounded-xl text-xs" style={{ background: c.isCurrent ? 'var(--dd-accent-soft)' : 'var(--dd-panel-hover)' }}>
+                          <span className="font-mono font-bold shrink-0" style={{ color: c.isCurrent ? 'var(--dd-accent)' : 'var(--dd-ink-faint)' }}>#{c.shortSha}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate" style={{ color: 'var(--dd-ink)' }}>{c.message}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>{c.author} · {new Date(c.date).toLocaleString('fr-FR')}</div>
+                          </div>
+                          {c.isCurrent && <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--dd-accent)', color: '#000' }}>Production</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {deployment && (
+                <div className="rounded-2xl p-6 border flex items-start gap-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <Lock className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--dd-ink-faint)' }} />
+                  <div>
+                    <div className="text-xs font-bold mb-1" style={{ color: 'var(--dd-ink)' }}>Rollback</div>
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{deployment.rollback.reason}</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
