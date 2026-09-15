@@ -7,8 +7,8 @@ import { execSync } from 'child_process';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole, ApiScope, API_SCOPES, WebhookEvent, WEBHOOK_EVENTS } from '../../types.ts';
-import { getMetricsSnapshot, getEndpointStats } from '../metrics.ts';
-import { getLogs, getLogSources, recordLog, LogLevel } from '../logs.ts';
+import { getMetricsSnapshot, getEndpointStats, resetMetrics } from '../metrics.ts';
+import { getLogs, getLogSources, recordLog, clearLogs, LogLevel } from '../logs.ts';
 import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
@@ -574,6 +574,114 @@ router.put('/config/maintenance', (req: AuthRequest, res: Response): void => {
   });
 
   res.json({ maintenance: { enabled: db.siteSettings.maintenance_mode, message: db.siteSettings.maintenance_message } });
+});
+
+// ---------------------------------------------------------------------------
+// Centre de maintenance — actions réelles regroupées. Pas de bouton de
+// restauration de sauvegarde (même raison qu'en base de données : écraserait
+// des données réelles) et pas de "nettoyage de fichiers temporaires" fictif
+// puisque l'application n'en écrit aucun sur le disque. Redémarrer le
+// serveur est la seule opération réellement dangereuse ici : elle exige une
+// confirmation explicite en plus de la confirmation déjà demandée côté
+// interface.
+// ---------------------------------------------------------------------------
+
+router.get('/maintenance/overview', (req: AuthRequest, res: Response): void => {
+  res.json({
+    tempFiles: {
+      applicable: false,
+      detail: "Cette application n'écrit aucun fichier temporaire sur le disque du serveur (aucun upload local) : rien à nettoyer ici.",
+    },
+    scheduledTasks: {
+      applicable: false,
+      detail: "Aucune tâche programmée (cron) n'est configurée sur ce serveur.",
+    },
+  });
+});
+
+router.post('/maintenance/clear-cache', (req: AuthRequest, res: Response): void => {
+  resetMetrics();
+  clearLogs();
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'maintenance_cache_cleared',
+    details: 'Compteurs de métriques et journal technique vidés.',
+    ip_address: req.ip,
+  });
+  res.json({ message: 'Cache vidé (métriques et journal technique).' });
+});
+
+router.post('/maintenance/reload-config', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    await db.reloadSiteSettings();
+    db.logActivity({
+      actor_id: req.user?.id,
+      actor_name: req.user?.full_name,
+      actor_role: req.user?.role,
+      action: 'maintenance_config_reloaded',
+      details: 'Configuration rechargée depuis la base de données.',
+      ip_address: req.ip,
+    });
+    res.json({ message: 'Configuration rechargée depuis la base de données.', settings: db.siteSettings });
+  } catch (error: any) {
+    recordLog('error', 'Maintenance', `Échec du rechargement de la configuration : ${error.message}`);
+    res.status(500).json({ error: 'Échec du rechargement de la configuration.', detail: error.message });
+  }
+});
+
+router.post('/maintenance/check-services', async (req: AuthRequest, res: Response): Promise<void> => {
+  let databaseState: ServiceHealthState = 'ok';
+  let databasePingMs: number | null = null;
+  try {
+    const start = Date.now();
+    await db.pool.query('SELECT 1');
+    databasePingMs = Date.now() - start;
+    databaseState = databasePingMs > 500 ? 'degraded' : 'ok';
+  } catch {
+    databaseState = 'down';
+  }
+
+  const externalServices = [
+    { name: 'MTN Mobile Money', configured: Boolean(process.env.MTN_API_KEY) },
+    { name: 'Orange Money', configured: Boolean(process.env.ORANGE_API_KEY) },
+    { name: 'Moov Money', configured: Boolean(process.env.MOOV_API_KEY) },
+    { name: 'CinetPay', configured: Boolean(process.env.CINETPAY_API_KEY) },
+  ];
+
+  res.json({
+    checkedAt: new Date().toISOString(),
+    api: { state: 'ok' as ServiceHealthState, detail: 'Cette réponse elle-même prouve que l’API répond.' },
+    database: { state: databaseState, pingMs: databasePingMs },
+    externalServices,
+  });
+});
+
+router.post('/maintenance/restart', (req: AuthRequest, res: Response): void => {
+  const { confirm } = req.body || {};
+  if (confirm !== 'REDEMARRER') {
+    res.status(400).json({ error: 'Confirmation requise : envoyez { "confirm": "REDEMARRER" }.' });
+    return;
+  }
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'maintenance_server_restart',
+    details: 'Redémarrage du serveur déclenché manuellement depuis le Centre de maintenance.',
+    ip_address: req.ip,
+  });
+
+  res.json({ message: 'Redémarrage en cours...' });
+
+  // Laisse le temps à la réponse HTTP et à l'écriture du journal d'activité
+  // de partir avant de couper le processus ; Railway relance automatiquement
+  // le conteneur.
+  setTimeout(() => {
+    db.flush().finally(() => process.exit(0));
+  }, 500);
 });
 
 // ---------------------------------------------------------------------------

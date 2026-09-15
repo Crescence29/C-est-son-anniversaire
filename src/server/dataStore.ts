@@ -532,6 +532,19 @@ class DataStore {
     if (this.webhookDeliveries.length > 500) this.webhookDeliveries.length = 500;
   }
 
+  // Utilisé par le Centre de maintenance ("Recharger les configurations") :
+  // relit les réglages depuis MySQL sans redémarrer le processus — utile si
+  // une modification a été faite directement en base plutôt que via l'API.
+  async reloadSiteSettings(): Promise<void> {
+    const [rows] = await this.pool.query<RowDataPacket[]>("SELECT data FROM `site_settings` WHERE id = 'main'");
+    if (rows.length > 0) {
+      const stored = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+      this.siteSettings = { ...DEFAULT_SITE_SETTINGS, ...stored };
+    } else {
+      this.siteSettings = { ...DEFAULT_SITE_SETTINGS };
+    }
+  }
+
   updateSiteSettings(partial: Partial<SiteSettings>) {
     this.siteSettings = { ...this.siteSettings, ...partial };
     const snapshot = this.siteSettings;

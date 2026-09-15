@@ -50,3 +50,8 @@ export function getLogs(filter?: { level?: LogLevel; source?: string; search?: s
 export function getLogSources(): string[] {
   return Array.from(new Set(logs.map((l) => l.source))).sort();
 }
+
+// Utilisé par le Centre de maintenance ("Vider le journal technique").
+export function clearLogs(): void {
+  logs.length = 0;
+}

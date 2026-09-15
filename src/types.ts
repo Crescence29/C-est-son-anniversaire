@@ -575,3 +575,22 @@ export interface ConfigInfo {
   maintenance: { enabled: boolean; message: string };
   sensitive: SensitiveConfigEntry[];
 }
+
+// ---------------------------------------------------------------------------
+// Centre de maintenance — voir src/server/routes/developer.ts
+// (/maintenance/overview, /maintenance/clear-cache,
+// /maintenance/reload-config, /maintenance/check-services,
+// /maintenance/restart).
+// ---------------------------------------------------------------------------
+
+export interface MaintenanceOverview {
+  tempFiles: { applicable: boolean; detail: string };
+  scheduledTasks: { applicable: boolean; detail: string };
+}
+
+export interface MaintenanceServiceCheck {
+  checkedAt: string;
+  api: { state: ServiceHealthState; detail: string };
+  database: { state: ServiceHealthState; pingMs: number | null };
+  externalServices: { name: string; configured: boolean }[];
+}

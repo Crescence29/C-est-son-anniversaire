@@ -61,6 +61,16 @@ export function getServerStartedAt(): Date {
   return serverStartedAt;
 }
 
+// Utilisé par le Centre de maintenance ("Vider le cache des métriques") :
+// remet les compteurs à zéro sans redémarrer le processus. Ne touche pas
+// serverStartedAt, qui reflète le vrai démarrage du serveur, pas ce vidage.
+export function resetMetrics(): void {
+  requestCount = 0;
+  recentErrors.length = 0;
+  responseTimings.length = 0;
+  endpointCounters.clear();
+}
+
 export function getMetricsSnapshot() {
   const avgResponseTimeMs = responseTimings.length
     ? Math.round(responseTimings.reduce((sum, t) => sum + t, 0) / responseTimings.length)

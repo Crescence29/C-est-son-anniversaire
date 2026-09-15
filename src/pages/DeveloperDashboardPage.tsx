@@ -4,7 +4,7 @@ import {
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
-  Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff,
+  Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff, Wrench, HardDrive, Clock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -16,7 +16,7 @@ import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
   LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
-  MediaSummary, MediaLinkCheckResult, DeploymentInfo, ConfigInfo,
+  MediaSummary, MediaLinkCheckResult, DeploymentInfo, ConfigInfo, MaintenanceOverview, MaintenanceServiceCheck,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -75,6 +75,9 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   media_orphans_cleaned: Trash2,
   deployment: Rocket,
   maintenance_mode_changed: SettingsIconAlias,
+  maintenance_cache_cleared: RefreshCw,
+  maintenance_config_reloaded: RefreshCw,
+  maintenance_server_restart: Power,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -94,6 +97,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
   media_orphans_cleaned: 'Références médias orphelines nettoyées',
   deployment: 'Nouveau déploiement',
   maintenance_mode_changed: 'Mode maintenance modifié',
+  maintenance_cache_cleared: 'Cache technique vidé',
+  maintenance_config_reloaded: 'Configuration rechargée',
+  maintenance_server_restart: 'Redémarrage du serveur déclenché',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -115,7 +121,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config' | 'maintenance'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -490,6 +496,78 @@ export const DeveloperDashboardPage: React.FC = () => {
     }
   };
 
+  // ---- Centre de maintenance ----
+  const [maintOverview, setMaintOverview] = useState<MaintenanceOverview | null>(null);
+  const [maintServiceCheck, setMaintServiceCheck] = useState<MaintenanceServiceCheck | null>(null);
+  const [maintChecking, setMaintChecking] = useState(false);
+  const [maintClearingCache, setMaintClearingCache] = useState(false);
+  const [maintReloading, setMaintReloading] = useState(false);
+  const [maintRestarting, setMaintRestarting] = useState(false);
+  const [maintActionMessage, setMaintActionMessage] = useState('');
+
+  const fetchMaintOverview = async () => {
+    try {
+      const res = await api.get<MaintenanceOverview>('/developer/maintenance/overview');
+      setMaintOverview(res);
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => { fetchMaintOverview(); }, []);
+
+  const runClearCache = async () => {
+    setMaintClearingCache(true);
+    try {
+      const res = await api.post<{ message: string }>('/developer/maintenance/clear-cache', {});
+      setMaintActionMessage(res.message);
+      fetchLogs();
+    } catch (err: any) {
+      alert(err?.message || 'Échec du vidage du cache.');
+    } finally {
+      setMaintClearingCache(false);
+    }
+  };
+
+  const runReloadConfig = async () => {
+    setMaintReloading(true);
+    try {
+      const res = await api.post<{ message: string }>('/developer/maintenance/reload-config', {});
+      setMaintActionMessage(res.message);
+      fetchConfig();
+    } catch (err: any) {
+      alert(err?.message || 'Échec du rechargement.');
+    } finally {
+      setMaintReloading(false);
+    }
+  };
+
+  const runCheckServices = async () => {
+    setMaintChecking(true);
+    try {
+      const res = await api.post<MaintenanceServiceCheck>('/developer/maintenance/check-services', {});
+      setMaintServiceCheck(res);
+    } catch (err: any) {
+      alert(err?.message || 'Échec de la vérification.');
+    } finally {
+      setMaintChecking(false);
+    }
+  };
+
+  const runRestartServer = async () => {
+    const typed = window.prompt('Cette action redémarre immédiatement le serveur pour tous les visiteurs.\nTapez REDEMARRER pour confirmer :');
+    if (typed !== 'REDEMARRER') return;
+    setMaintRestarting(true);
+    try {
+      const res = await api.post<{ message: string }>('/developer/maintenance/restart', { confirm: 'REDEMARRER' });
+      setMaintActionMessage(res.message);
+    } catch (err: any) {
+      alert(err?.message || 'Échec du redémarrage.');
+    } finally {
+      setMaintRestarting(false);
+    }
+  };
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -612,6 +690,7 @@ export const DeveloperDashboardPage: React.FC = () => {
         { key: 'media', label: 'Fichiers & médias', icon: ImageIcon },
         { key: 'deployment', label: 'Déploiement', icon: Rocket },
         { key: 'config', label: 'Configuration', icon: Sliders },
+        { key: 'maintenance', label: 'Centre de maintenance', icon: Wrench },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -629,6 +708,7 @@ export const DeveloperDashboardPage: React.FC = () => {
     media: { title: 'Fichiers & médias', subtitle: 'Audit des liens réels (aucun fichier n’est hébergé sur ce serveur)' },
     deployment: { title: 'Déploiement', subtitle: 'Version réellement déployée, historique des commits, environnements' },
     config: { title: 'Configuration', subtitle: 'Réglages techniques réels — les valeurs sensibles restent masquées' },
+    maintenance: { title: 'Centre de maintenance', subtitle: 'Actions techniques réelles — les opérations sensibles demandent une confirmation' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -1309,6 +1389,123 @@ export const DeveloperDashboardPage: React.FC = () => {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {activeTab === 'maintenance' && (
+            <div className="space-y-6">
+              {maintActionMessage && (
+                <div className="rounded-xl p-3 border text-xs" style={{ background: 'var(--dd-accent-soft)', borderColor: 'var(--dd-border)', color: 'var(--dd-accent)' }}>
+                  {maintActionMessage}
+                </div>
+              )}
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-base mb-4 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                  <Wrench className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                  Actions rapides
+                </h3>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <button onClick={runClearCache} disabled={maintClearingCache} className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>
+                    <Trash2 className="w-4 h-4" /> {maintClearingCache ? 'Vidage...' : 'Vider le cache'}
+                  </button>
+                  <button onClick={handleBackup} disabled={isBackingUp} className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>
+                    <DatabaseBackup className="w-4 h-4" /> {isBackingUp ? 'Sauvegarde...' : 'Backup maintenant'}
+                  </button>
+                  <button onClick={runReloadConfig} disabled={maintReloading} className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>
+                    <RefreshCw className="w-4 h-4" /> {maintReloading ? 'Rechargement...' : 'Recharger les configurations'}
+                  </button>
+                  <button onClick={runCheckServices} disabled={maintChecking} className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>
+                    <ShieldCheck className="w-4 h-4" /> {maintChecking ? 'Vérification...' : 'Vérifier API & DB'}
+                  </button>
+                </div>
+
+                {maintServiceCheck && (
+                  <div className="mt-4 rounded-xl border overflow-hidden" style={{ borderColor: 'var(--dd-border)' }}>
+                    <div className="flex items-center justify-between px-3 py-2 border-b text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                      <span style={{ color: 'var(--dd-ink-soft)' }}>API</span>
+                      <span className="font-bold" style={{ color: STATE_META[maintServiceCheck.api.state]?.text }}>{STATE_META[maintServiceCheck.api.state]?.label}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2 border-b text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                      <span style={{ color: 'var(--dd-ink-soft)' }}>Base de données</span>
+                      <span className="font-bold" style={{ color: STATE_META[maintServiceCheck.database.state]?.text }}>
+                        {STATE_META[maintServiceCheck.database.state]?.label}{maintServiceCheck.database.pingMs !== null ? ` · ${maintServiceCheck.database.pingMs} ms` : ''}
+                      </span>
+                    </div>
+                    {maintServiceCheck.externalServices.map((s) => (
+                      <div key={s.name} className="flex items-center justify-between px-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                        <span style={{ color: 'var(--dd-ink-soft)' }}>{s.name}</span>
+                        <span className="font-bold" style={{ color: s.configured ? '#34d399' : 'var(--dd-ink-faint)' }}>{s.configured ? 'Configuré' : 'Non configuré'}</span>
+                      </div>
+                    ))}
+                    <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>Vérifié à {new Date(maintServiceCheck.checkedAt).toLocaleTimeString('fr-FR')}</div>
+                  </div>
+                )}
+              </div>
+
+              {maintOverview && (
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <HardDrive className="w-4 h-4" style={{ color: 'var(--dd-ink-faint)' }} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Fichiers temporaires</span>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{maintOverview.tempFiles.detail}</p>
+                  </div>
+                  <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="w-4 h-4" style={{ color: 'var(--dd-ink-faint)' }} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Tâches programmées</span>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{maintOverview.scheduledTasks.detail}</p>
+                  </div>
+                </div>
+              )}
+
+              {config && (
+                <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: config.maintenance.enabled ? '#f43f5e' : 'var(--dd-ink)' }}>
+                      <AlertTriangle className="w-4 h-4" /> Mode maintenance
+                    </h3>
+                    <span className="text-xs font-bold" style={{ color: config.maintenance.enabled ? '#f43f5e' : 'var(--dd-ink-faint)' }}>{config.maintenance.enabled ? 'ACTIVÉ' : 'Désactivé'}</span>
+                  </div>
+                  {config.maintenance.enabled ? (
+                    <button onClick={() => toggleMaintenance(false)} disabled={maintenanceSaving} className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
+                      Désactiver
+                    </button>
+                  ) : (
+                    <button onClick={() => toggleMaintenance(true)} disabled={maintenanceSaving} className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                      Activer
+                    </button>
+                  )}
+                  <p className="text-[11px] mt-2" style={{ color: 'var(--dd-ink-faint)' }}>Réglable en détail (message affiché) dans l'onglet Configuration.</p>
+                </div>
+              )}
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: '#f43f5e' }}>
+                    <Power className="w-4 h-4" /> Redémarrer le serveur
+                  </h3>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--dd-ink-faint)' }}>
+                  Coupe et relance immédiatement le processus pour tous les visiteurs (Railway relance automatiquement le conteneur). Demande une confirmation supplémentaire par sécurité.
+                </p>
+                <button onClick={runRestartServer} disabled={maintRestarting} className="px-4 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                  {maintRestarting ? 'Redémarrage...' : 'Redémarrer le serveur'}
+                </button>
+              </div>
+
+              <div className="rounded-2xl p-6 border flex items-start gap-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <Lock className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--dd-ink-faint)' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: 'var(--dd-ink)' }}>Restauration de sauvegarde</div>
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>
+                    Non proposée ici par sécurité, pour la même raison que dans l'onglet Base de données : une restauration écraserait des données clients/commandes réelles. Utilisez les sauvegardes téléchargées pour une restauration manuelle si nécessaire.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
