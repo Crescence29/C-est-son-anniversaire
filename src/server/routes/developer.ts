@@ -8,7 +8,7 @@ import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole, ApiScope, API_SCOPES, WebhookEvent, WEBHOOK_EVENTS } from '../../types.ts';
 import { getMetricsSnapshot, getEndpointStats } from '../metrics.ts';
-import { getLogs, getLogSources, LogLevel } from '../logs.ts';
+import { getLogs, getLogSources, recordLog, LogLevel } from '../logs.ts';
 import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
@@ -219,6 +219,133 @@ router.post('/system-backup', (req: AuthRequest, res: Response): void => {
   });
 
   res.json({ message: 'Sauvegarde générée.', lastBackupAt: db.lastBackupAt, backup: snapshot });
+});
+
+// ---------------------------------------------------------------------------
+// Base de données — surveillance réelle (introspection MySQL en direct), sans
+// bouton de suppression ni de restauration automatique : une restauration
+// écraserait des données clients/commandes réelles, c'est délibérément laissé
+// hors de ce tableau de bord (voir rapport.md).
+// ---------------------------------------------------------------------------
+
+router.get('/database/status', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const start = Date.now();
+    const [dbRows]: any = await db.pool.query('SELECT DATABASE() AS db');
+    const pingMs = Date.now() - start;
+    const [tableStatusRows]: any = await db.pool.query('SHOW TABLE STATUS');
+    let approxRecordCount = 0;
+    let sizeBytes = 0;
+    for (const t of tableStatusRows) {
+      approxRecordCount += Number(t.Rows || 0);
+      sizeBytes += Number(t.Data_length || 0) + Number(t.Index_length || 0);
+    }
+    const [connRows]: any = await db.pool.query("SHOW STATUS LIKE 'Threads_connected'");
+    const [slowRows]: any = await db.pool.query("SHOW STATUS LIKE 'Slow_queries'");
+    const [uptimeRows]: any = await db.pool.query("SHOW STATUS LIKE 'Uptime'");
+
+    res.json({
+      status: {
+        engine: 'MySQL',
+        state: pingMs > 500 ? 'degraded' : 'ok',
+        databaseName: dbRows[0]?.db || null,
+        pingMs,
+        tableCount: tableStatusRows.length,
+        approxRecordCount,
+        sizeBytes,
+        activeConnections: Number(connRows[0]?.Value || 0),
+        slowQueriesTotal: Number(slowRows[0]?.Value || 0),
+        mysqlUptimeSeconds: Number(uptimeRows[0]?.Value || 0),
+        lastBackupAt: db.lastBackupAt,
+        recentSqlErrors: getLogs({ source: 'Database' }).slice(0, 10),
+      },
+    });
+  } catch (error: any) {
+    recordLog('error', 'Database', `Échec de lecture du statut de la base : ${error.message}`);
+    res.status(503).json({ error: 'Base de données inaccessible.', detail: error.message });
+  }
+});
+
+router.get('/database/tables', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const [rows]: any = await db.pool.query('SHOW TABLE STATUS');
+    const tables = rows
+      .map((t: any) => ({
+        name: t.Name,
+        engine: t.Engine || null,
+        approxRows: Number(t.Rows || 0),
+        sizeBytes: Number(t.Data_length || 0) + Number(t.Index_length || 0),
+        collation: t.Collation || null,
+      }))
+      .sort((a: any, b: any) => b.sizeBytes - a.sizeBytes);
+    res.json({ tables });
+  } catch (error: any) {
+    recordLog('error', 'Database', `Échec de lecture des tables : ${error.message}`);
+    res.status(503).json({ error: 'Impossible de lister les tables.', detail: error.message });
+  }
+});
+
+router.get('/database/migrations', (req: AuthRequest, res: Response): void => {
+  try {
+    const dir = path.join(process.cwd(), 'migrations');
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort() : [];
+    res.json({
+      migrations: files.map((file) => ({ file, appliedInProduction: true })),
+      note: "Suivi basé sur les fichiers du dépôt : il n'existe pas encore de table de suivi des migrations en base. Chaque migration listée a été appliquée manuellement en production au moment de son ajout.",
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Impossible de lister les migrations.', detail: error.message });
+  }
+});
+
+router.post('/database/integrity-check', async (req: AuthRequest, res: Response): Promise<void> => {
+  const results: { check: string; status: 'ok' | 'warning' | 'error'; detail: string }[] = [];
+  try {
+    const [tableRows]: any = await db.pool.query('SHOW TABLES');
+    const tableNames: string[] = tableRows.map((r: any) => Object.values(r)[0] as string);
+
+    for (const name of tableNames) {
+      try {
+        const [checkRows]: any = await db.pool.query(`CHECK TABLE \`${name}\``);
+        const msg = checkRows[0]?.Msg_text || 'OK';
+        results.push({ check: `Table \`${name}\``, status: String(msg).toLowerCase() === 'ok' ? 'ok' : 'warning', detail: msg });
+      } catch (e: any) {
+        results.push({ check: `Table \`${name}\``, status: 'error', detail: e.message });
+      }
+    }
+
+    const orphanChecks = [
+      { check: 'Commandes sans client existant', sql: 'SELECT COUNT(*) AS n FROM orders o LEFT JOIN users u ON o.client_id = u.id WHERE u.id IS NULL' },
+      { check: 'Commandes sans prestation existante', sql: 'SELECT COUNT(*) AS n FROM orders o LEFT JOIN services s ON o.service_id = s.id WHERE s.id IS NULL' },
+      { check: 'Paiements sans commande existante', sql: 'SELECT COUNT(*) AS n FROM payments p LEFT JOIN orders o ON p.order_id = o.id WHERE o.id IS NULL' },
+      { check: 'Avis sans commande existante', sql: 'SELECT COUNT(*) AS n FROM reviews r LEFT JOIN orders o ON r.order_id = o.id WHERE o.id IS NULL' },
+      { check: 'Livrables sans commande existante', sql: 'SELECT COUNT(*) AS n FROM order_deliverables d LEFT JOIN orders o ON d.order_id = o.id WHERE o.id IS NULL' },
+      { check: 'Favoris sans prestation existante', sql: 'SELECT COUNT(*) AS n FROM favorites f LEFT JOIN services s ON f.service_id = s.id WHERE s.id IS NULL' },
+    ];
+    for (const oc of orphanChecks) {
+      try {
+        const [rows]: any = await db.pool.query(oc.sql);
+        const n = Number(rows[0]?.n || 0);
+        results.push({ check: oc.check, status: n === 0 ? 'ok' : 'warning', detail: n === 0 ? 'Aucune anomalie.' : `${n} enregistrement(s) orphelin(s).` });
+      } catch (e: any) {
+        results.push({ check: oc.check, status: 'error', detail: e.message });
+      }
+    }
+
+    db.logActivity({
+      actor_id: req.user?.id,
+      actor_name: req.user?.full_name,
+      actor_role: req.user?.role,
+      action: 'database_integrity_check',
+      details: `Vérification d'intégrité lancée (${results.length} contrôles).`,
+      ip_address: req.ip,
+    });
+
+    res.json({ results, checkedAt: new Date().toISOString() });
+  } catch (error: any) {
+    recordLog('error', 'Database', `Échec de la vérification d'intégrité : ${error.message}`);
+    res.status(500).json({ error: "Échec de la vérification d'intégrité.", detail: error.message, results });
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import mysql, { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVideo, OrderDeliverable, Favorite, Notification, ActivityLog, OrderStatus, UserRole, StaffDashboardStats, AdminDashboardStats, ClientDashboardStats, SiteSettings, FaqItem, SupportMessage, AccountSession, ApiKeySummary, WebhookSummary, WebhookDelivery } from '../types.ts';
+import { recordLog } from './logs.ts';
 
 interface ApiKeyRecord extends ApiKeySummary {
   key_hash: string;
@@ -155,6 +156,7 @@ class DataStore {
       .then(() => undefined)
       .catch((error) => {
         console.error('[MySQL] Write failed:', error.message);
+        recordLog('error', 'Database', `Échec d'écriture SQL : ${error.message}`, error.sqlMessage || null);
         throw error;
       });
 

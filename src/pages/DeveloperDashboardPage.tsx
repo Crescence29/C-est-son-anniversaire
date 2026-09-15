@@ -3,7 +3,7 @@ import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
-  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search,
+  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -14,7 +14,7 @@ import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel
 import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
-  LogEntry, LogLevel,
+  LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -69,6 +69,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   settings_updated: SettingsIconAlias,
   password_reset_by_admin: KeyRound,
   system_backup_created: DatabaseBackup,
+  database_integrity_check: Database,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -84,6 +85,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   settings_updated: 'Identité visuelle modifiée',
   password_reset_by_admin: 'Accès réinitialisé',
   system_backup_created: 'Sauvegarde technique déclenchée',
+  database_integrity_check: 'Vérification d’intégrité de la base lancée',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -105,7 +107,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -333,6 +335,54 @@ export const DeveloperDashboardPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logSearch, logLevel, logSource]);
 
+  // ---- Base de données ----
+  const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
+  const [dbTables, setDbTables] = useState<DatabaseTableInfo[]>([]);
+  const [dbMigrations, setDbMigrations] = useState<DatabaseMigration[]>([]);
+  const [showDbTables, setShowDbTables] = useState(false);
+  const [integrityResults, setIntegrityResults] = useState<IntegrityCheckResult[] | null>(null);
+  const [integrityRunning, setIntegrityRunning] = useState(false);
+
+  const fetchDatabaseData = async () => {
+    try {
+      const [statusRes, tablesRes, migrationsRes] = await Promise.all([
+        api.get<{ status: DatabaseStatus }>('/developer/database/status'),
+        api.get<{ tables: DatabaseTableInfo[] }>('/developer/database/tables'),
+        api.get<{ migrations: DatabaseMigration[] }>('/developer/database/migrations'),
+      ]);
+      setDbStatus(statusRes.status);
+      setDbTables(tablesRes.tables || []);
+      setDbMigrations(migrationsRes.migrations || []);
+    } catch {
+      // silencieux : section secondaire, ne bloque pas le reste du dashboard
+    }
+  };
+
+  useEffect(() => {
+    fetchDatabaseData();
+    const interval = setInterval(fetchDatabaseData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const runIntegrityCheck = async () => {
+    setIntegrityRunning(true);
+    try {
+      const res = await api.post<{ results: IntegrityCheckResult[] }>('/developer/database/integrity-check', {});
+      setIntegrityResults(res.results || []);
+    } catch (err: any) {
+      alert(err?.message || "Échec de la vérification d'intégrité.");
+    } finally {
+      setIntegrityRunning(false);
+    }
+  };
+
+  function formatBytes(bytes: number): string {
+    if (!bytes) return '0 o';
+    const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+    const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -451,6 +501,7 @@ export const DeveloperDashboardPage: React.FC = () => {
       items: [
         { key: 'system', label: 'État système', icon: Gauge },
         { key: 'logs', label: `Journal technique (${logs.length})`, icon: ScrollText },
+        { key: 'database', label: 'Base de données', icon: Database },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -464,6 +515,7 @@ export const DeveloperDashboardPage: React.FC = () => {
   const TAB_TITLES: Record<typeof activeTab, { title: string; subtitle: string }> = {
     system: { title: 'État système', subtitle: 'Santé technique de la plateforme — aucune donnée client ici' },
     logs: { title: 'Journal technique', subtitle: 'Erreurs serveur, API, paiement, synchronisation, authentification et JavaScript' },
+    database: { title: 'Base de données', subtitle: 'État MySQL en direct, tables, migrations et vérification d’intégrité' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -614,6 +666,160 @@ export const DeveloperDashboardPage: React.FC = () => {
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'database' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <Database className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    MySQL
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={fetchDatabaseData}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                      style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}
+                    >
+                      <RefreshCw className="w-3 h-3" /> Actualiser
+                    </button>
+                    <button
+                      onClick={handleBackup}
+                      disabled={isBackingUp}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                      style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}
+                    >
+                      <DatabaseBackup className="w-3 h-3" /> {isBackingUp ? 'Sauvegarde...' : 'Sauvegarder maintenant'}
+                    </button>
+                  </div>
+                </div>
+
+                {!dbStatus ? (
+                  <div className="text-center py-8 text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-5">
+                      <span className={`w-2 h-2 rounded-full ${STATE_META[dbStatus.state]?.dot || STATE_META.unknown.dot}`} />
+                      <span className={`text-xs font-bold ${STATE_META[dbStatus.state]?.text || STATE_META.unknown.text}`}>
+                        {STATE_META[dbStatus.state]?.label || 'Inconnu'}
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>· {dbStatus.pingMs} ms</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Base', value: dbStatus.databaseName || '—' },
+                        { label: 'Tables', value: String(dbStatus.tableCount) },
+                        { label: 'Enregistrements (approx.)', value: dbStatus.approxRecordCount.toLocaleString('fr-FR') },
+                        { label: 'Taille', value: formatBytes(dbStatus.sizeBytes) },
+                        { label: 'Connexions actives', value: String(dbStatus.activeConnections) },
+                        { label: 'Requêtes lentes (cumul serveur)', value: String(dbStatus.slowQueriesTotal) },
+                        { label: 'Disponible depuis', value: `${Math.floor(dbStatus.mysqlUptimeSeconds / 3600)} h` },
+                        { label: 'Dernier backup', value: dbStatus.lastBackupAt ? new Date(dbStatus.lastBackupAt).toLocaleString('fr-FR') : 'Jamais' },
+                      ].map((kpi) => (
+                        <div key={kpi.label} className="rounded-xl p-3" style={{ background: 'var(--dd-panel-hover)' }}>
+                          <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>{kpi.label}</div>
+                          <div className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{kpi.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {dbStatus.recentSqlErrors.length > 0 && (
+                      <div className="mt-5">
+                        <div className="text-xs font-bold mb-2" style={{ color: 'var(--dd-ink)' }}>Erreurs SQL récentes</div>
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--dd-border)' }}>
+                          {dbStatus.recentSqlErrors.map((e) => (
+                            <div key={e.id} className="px-3 py-2 border-b last:border-0 font-mono text-[11px]" style={{ borderColor: 'var(--dd-border)', color: 'var(--dd-ink-soft)' }}>
+                              <span style={{ color: '#f43f5e' }}>[{new Date(e.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}]</span> {e.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <button
+                  onClick={() => setShowDbTables((v) => !v)}
+                  className="w-full flex items-center justify-between text-left"
+                >
+                  <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>Tables ({dbTables.length})</h3>
+                  <span className="text-xs" style={{ color: 'var(--dd-accent)' }}>{showDbTables ? 'Masquer' : 'Voir le détail'}</span>
+                </button>
+                {showDbTables && (
+                  <div className="mt-4 rounded-xl border overflow-hidden overflow-x-auto" style={{ borderColor: 'var(--dd-border)' }}>
+                    <table className="w-full text-xs min-w-[420px]">
+                      <thead>
+                        <tr style={{ background: 'var(--dd-panel-hover)' }}>
+                          <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>Table</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>Lignes (approx.)</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>Taille</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dbTables.map((t) => (
+                          <tr key={t.name} className="border-t" style={{ borderColor: 'var(--dd-border)' }}>
+                            <td className="px-3 py-2 font-mono" style={{ color: 'var(--dd-ink)' }}>{t.name}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: 'var(--dd-ink-soft)' }}>{t.approxRows.toLocaleString('fr-FR')}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: 'var(--dd-ink-soft)' }}>{formatBytes(t.sizeBytes)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-base mb-3" style={{ color: 'var(--dd-ink)' }}>Migrations ({dbMigrations.length})</h3>
+                <div className="space-y-1.5 mb-3">
+                  {dbMigrations.map((m) => (
+                    <div key={m.file} className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--dd-ink-soft)' }}>
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: '#34d399' }} />
+                      {m.file}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>
+                  Suivi basé sur les fichiers du dépôt : chaque migration listée a été appliquée manuellement en production au moment de son ajout.
+                </p>
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>Vérification d'intégrité</h3>
+                  <button
+                    onClick={runIntegrityCheck}
+                    disabled={integrityRunning}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                    style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}
+                  >
+                    <ShieldCheck className="w-3 h-3" /> {integrityRunning ? 'Vérification...' : 'Lancer une vérification'}
+                  </button>
+                </div>
+                {integrityResults === null ? (
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Vérifie chaque table (CHECK TABLE) et recherche les enregistrements orphelins (commandes, paiements, avis, livrables, favoris).</p>
+                ) : (
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--dd-border)' }}>
+                    {integrityResults.map((r, i) => {
+                      const color = r.status === 'ok' ? '#34d399' : r.status === 'warning' ? '#fbbf24' : '#f43f5e';
+                      return (
+                        <div key={i} className="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                          <span style={{ color: 'var(--dd-ink)' }}>{r.check}</span>
+                          <span className="text-right shrink-0" style={{ color }}>{r.detail}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[11px] mt-3" style={{ color: 'var(--dd-ink-faint)' }}>
+                  Par sécurité, aucune restauration automatique n'est proposée depuis ce tableau de bord : une restauration écraserait des données clients et commandes réelles. Utilisez les sauvegardes téléchargées pour une restauration manuelle si nécessaire.
+                </p>
               </div>
             </div>
           )}

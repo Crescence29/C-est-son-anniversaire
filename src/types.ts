@@ -436,3 +436,44 @@ export interface LogEntry {
   reference: string | null;
   at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Surveillance de la base de données — voir src/server/routes/developer.ts
+// (/database/status, /database/tables, /database/migrations,
+// /database/integrity-check). Introspection MySQL en direct, pas de valeurs
+// simulées.
+// ---------------------------------------------------------------------------
+
+export interface DatabaseStatus {
+  engine: 'MySQL';
+  state: ServiceHealthState;
+  databaseName: string | null;
+  pingMs: number;
+  tableCount: number;
+  approxRecordCount: number;
+  sizeBytes: number;
+  activeConnections: number;
+  slowQueriesTotal: number;
+  mysqlUptimeSeconds: number;
+  lastBackupAt: string | null;
+  recentSqlErrors: LogEntry[];
+}
+
+export interface DatabaseTableInfo {
+  name: string;
+  engine: string | null;
+  approxRows: number;
+  sizeBytes: number;
+  collation: string | null;
+}
+
+export interface DatabaseMigration {
+  file: string;
+  appliedInProduction: boolean;
+}
+
+export interface IntegrityCheckResult {
+  check: string;
+  status: 'ok' | 'warning' | 'error';
+  detail: string;
+}
