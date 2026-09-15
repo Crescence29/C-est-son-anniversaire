@@ -5,6 +5,7 @@ import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { User } from '../../types.ts';
 import { describeDevice } from '../utils/userAgent.ts';
+import { recordLog } from '../logs.ts';
 
 interface UserWithResetToken extends User {
   reset_password_token?: string | null;
@@ -157,6 +158,7 @@ router.post('/login', async (req, res: Response): Promise<void> => {
         details: `Tentative de connexion avec un email inconnu (${email}).`,
         ip_address: req.ip,
       });
+      recordLog('warn', 'AuthService', 'Échec d’authentification : email inconnu', email);
       res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
       return;
     }
@@ -172,6 +174,7 @@ router.post('/login', async (req, res: Response): Promise<void> => {
         details: 'Tentative de connexion sur un compte banni définitivement.',
         ip_address: req.ip,
       });
+      recordLog('warn', 'AuthService', 'Échec d’authentification : compte banni', user.email);
       res.status(403).json({
         error: 'Ce compte a été banni définitivement. Cette décision est sans appel.',
         banned: true,
@@ -191,6 +194,7 @@ router.post('/login', async (req, res: Response): Promise<void> => {
         details: 'Tentative de connexion sur un compte suspendu.',
         ip_address: req.ip,
       });
+      recordLog('warn', 'AuthService', 'Échec d’authentification : compte suspendu', user.email);
       res.status(403).json({
         error: 'Ce compte a été suspendu par un administrateur.',
         suspended: true,
@@ -217,6 +221,7 @@ router.post('/login', async (req, res: Response): Promise<void> => {
         details: 'Mot de passe incorrect.',
         ip_address: req.ip,
       });
+      recordLog('warn', 'AuthService', 'Échec d’authentification : mot de passe incorrect', user.email);
       res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
       return;
     }
@@ -241,6 +246,7 @@ router.post('/login', async (req, res: Response): Promise<void> => {
       details: `Connexion réussie de ${user.full_name}.`,
       ip_address: req.ip,
     });
+    recordLog('info', 'AuthService', `Connexion réussie de ${user.full_name}`, user.email);
 
     res.json({
       message: 'Connexion réussie.',
@@ -266,6 +272,9 @@ router.get('/me', authenticateToken, (req: AuthRequest, res: Response): void => 
 // mais la déconnexion côté client (suppression du jeton local) reste normale.
 router.post('/logout', authenticateToken, (req: AuthRequest, res: Response): void => {
   if (req.sessionId) db.revokeSession(req.sessionId);
+  if (req.user) {
+    recordLog('info', 'AuthService', `Déconnexion de ${req.user.full_name}`, req.user.email);
+  }
   res.json({ message: 'Déconnecté.' });
 });
 

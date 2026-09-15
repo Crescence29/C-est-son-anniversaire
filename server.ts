@@ -23,6 +23,8 @@ import faqRouter from './src/server/routes/faq.ts';
 import supportRouter from './src/server/routes/support.ts';
 import { db } from './src/server/dataStore.ts';
 import { recordRequest, recordTiming, recordError, recordEndpointHit } from './src/server/metrics.ts';
+import { recordLog } from './src/server/logs.ts';
+import logsRouter from './src/server/routes/logs.ts';
 
 async function startServer() {
   const app = express();
@@ -85,6 +87,7 @@ async function startServer() {
       if (res.statusCode >= 500) {
         const message = (body && typeof body === 'object' && 'error' in body ? String((body as { error?: unknown }).error) : null) || 'Erreur serveur';
         recordError(message, req.originalUrl);
+        recordLog('error', 'API', message, req.originalUrl);
       }
       db.flush()
         .then(() => originalJson(body))
@@ -92,6 +95,7 @@ async function startServer() {
           console.error('[MySQL] Impossible de finaliser les écritures:', error);
           if (!res.headersSent) res.status(500);
           recordError(error?.message || 'Échec de persistance', req.originalUrl);
+          recordLog('error', 'SyncService', error?.message || 'Échec de persistance', req.originalUrl);
           originalJson({ error: 'Erreur de persistance en base de données.' });
         });
       return res;
@@ -124,6 +128,7 @@ async function startServer() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/faq', faqRouter);
   app.use('/api/support-messages', supportRouter);
+  app.use('/api/logs', logsRouter);
 
   // Catches anything a route threw instead of handling itself (routes here
   // normally reply with res.status(500).json(...) directly, which the
@@ -136,6 +141,7 @@ async function startServer() {
     }
     console.error('[Server] Erreur non gérée:', err);
     recordError(err.message || 'Erreur non gérée', req.originalUrl);
+    recordLog('error', 'Server', err.message || 'Erreur non gérée', req.originalUrl);
     res.status(500).json({ error: 'Erreur interne du serveur.' });
   });
 

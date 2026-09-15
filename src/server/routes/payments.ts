@@ -11,6 +11,7 @@ import {
   PaymentProviderType,
 } from '../../types.ts';
 import { dispatchWebhookEvent } from '../webhooks.ts';
+import { recordLog } from '../logs.ts';
 
 const router = Router();
 
@@ -354,6 +355,12 @@ router.get(
           `[Payment] Montant incohérent pour ${payment.provider_reference} : ` +
           `attendu ${payment.amount}, reçu du provider ${verified.amount}.`
         );
+        recordLog(
+          'error',
+          'PaymentService',
+          `Montant incohérent : attendu ${payment.amount}, reçu ${verified.amount}.`,
+          `Transaction #${payment.provider_reference}`
+        );
 
         res.status(409).json({
           error:
@@ -388,10 +395,16 @@ router.get(
       }
 
       res.json({ payment });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         '[Payment] Erreur de vérification :',
         error
+      );
+      recordLog(
+        'error',
+        'PaymentService',
+        error?.message || 'Délai dépassé auprès du fournisseur de paiement',
+        `Transaction #${payment.provider_reference}`
       );
 
       res.status(502).json({
@@ -487,6 +500,12 @@ router.post(
       console.error(
         `[Webhook] Montant incohérent pour ${provider_reference} : ` +
         `attendu ${payment.amount}, reçu ${amount}.`
+      );
+      recordLog(
+        'error',
+        'PaymentService',
+        `Montant incohérent (webhook fournisseur) : attendu ${payment.amount}, reçu ${amount}.`,
+        `Transaction #${provider_reference}`
       );
 
       res.status(409).json({

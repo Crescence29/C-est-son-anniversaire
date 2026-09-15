@@ -425,3 +425,14 @@ export interface ExternalServiceStatus {
   configured: boolean;
   detail: string;
 }
+
+export type LogLevel = 'error' | 'warn' | 'info';
+
+export interface LogEntry {
+  id: string;
+  level: LogLevel;
+  source: string;
+  message: string;
+  reference: string | null;
+  at: string;
+}

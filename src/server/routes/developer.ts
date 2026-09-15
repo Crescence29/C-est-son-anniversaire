@@ -8,6 +8,7 @@ import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole, ApiScope, API_SCOPES, WebhookEvent, WEBHOOK_EVENTS } from '../../types.ts';
 import { getMetricsSnapshot, getEndpointStats } from '../metrics.ts';
+import { getLogs, getLogSources, LogLevel } from '../logs.ts';
 import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
@@ -634,6 +635,20 @@ router.put('/logo', (req: AuthRequest, res: Response): void => {
 // Gestion de l'API : endpoints réels + trafic en direct, clés API pour un
 // accès externe, webhooks sortants, état des services externes.
 // ---------------------------------------------------------------------------
+
+// GET /api/developer/logs — journal technique unifié (erreurs serveur/API,
+// paiements, synchronisation, authentification, connexions, erreurs
+// JavaScript côté client), avec recherche. Distinct du journal d'activité
+// (qui répond à "qui a fait quoi", pas "qu'est-ce qui s'est passé").
+router.get('/logs', (req: AuthRequest, res: Response): void => {
+  const { search, level, source } = req.query;
+  const logs = getLogs({
+    search: typeof search === 'string' ? search : undefined,
+    level: typeof level === 'string' && ['error', 'warn', 'info'].includes(level) ? (level as LogLevel) : undefined,
+    source: typeof source === 'string' && source !== 'all' ? source : undefined,
+  });
+  res.json({ logs, sources: getLogSources() });
+});
 
 // GET /api/developer/endpoints — la liste réelle des routes enregistrées
 // dans Express, avec leur trafic et leur taux d'erreur en direct depuis le

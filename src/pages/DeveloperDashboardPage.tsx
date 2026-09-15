@@ -3,7 +3,7 @@ import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
-  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power,
+  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -14,6 +14,7 @@ import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel
 import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
+  LogEntry, LogLevel,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -85,6 +86,13 @@ const ACTIVITY_LABELS: Record<string, string> = {
   system_backup_created: 'Sauvegarde technique déclenchée',
 };
 
+const ROLE_DISPLAY: Record<string, string> = {
+  developer: 'Developer',
+  admin: 'Admin',
+  staff: 'Manager',
+  client: 'Client',
+};
+
 function timeAgo(iso: string | null): string {
   if (!iso) return 'Jamais';
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -97,7 +105,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -297,6 +305,34 @@ export const DeveloperDashboardPage: React.FC = () => {
     }
   };
 
+  // ---- Journal technique (logs) ----
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logSources, setLogSources] = useState<string[]>([]);
+  const [logSearch, setLogSearch] = useState('');
+  const [logLevel, setLogLevel] = useState<LogLevel | 'all'>('all');
+  const [logSource, setLogSource] = useState('all');
+
+  const fetchLogs = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (logSearch) params.set('search', logSearch);
+      if (logLevel !== 'all') params.set('level', logLevel);
+      if (logSource !== 'all') params.set('source', logSource);
+      const res = await api.get<{ logs: LogEntry[]; sources: string[] }>(`/developer/logs?${params.toString()}`);
+      setLogs(res.logs || []);
+      setLogSources(res.sources || []);
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logSearch, logLevel, logSource]);
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -414,6 +450,7 @@ export const DeveloperDashboardPage: React.FC = () => {
       title: 'Technique',
       items: [
         { key: 'system', label: 'État système', icon: Gauge },
+        { key: 'logs', label: `Journal technique (${logs.length})`, icon: ScrollText },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -426,6 +463,7 @@ export const DeveloperDashboardPage: React.FC = () => {
 
   const TAB_TITLES: Record<typeof activeTab, { title: string; subtitle: string }> = {
     system: { title: 'État système', subtitle: 'Santé technique de la plateforme — aucune donnée client ici' },
+    logs: { title: 'Journal technique', subtitle: 'Erreurs serveur, API, paiement, synchronisation, authentification et JavaScript' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -488,23 +526,89 @@ export const DeveloperDashboardPage: React.FC = () => {
                     Aucune activité enregistrée pour le moment.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                  // Format "audit log" volontairement compact — une ligne par
+                  // entrée (heure — acteur — action), pour répondre
+                  // directement à "qui a fait quoi" d'un coup d'œil, plutôt
+                  // que la carte plus riche utilisée ailleurs dans l'app.
+                  <div className="max-h-[28rem] overflow-y-auto font-mono text-xs">
                     {activityLogs.map((log) => {
-                      const Icon = ACTIVITY_ICONS[log.action] || Activity;
+                      const roleLabel = log.actor_role ? ROLE_DISPLAY[log.actor_role] || log.actor_role : 'Système';
+                      const time = new Date(log.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                      const actionLabel = ACTIVITY_LABELS[log.action] || log.action;
                       return (
-                        <div key={log.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: 'var(--dd-border)' }}>
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold" style={{ color: 'var(--dd-ink)' }}>{ACTIVITY_LABELS[log.action] || log.action}</span>
-                              <span className="text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--dd-ink-faint)' }}>{new Date(log.created_at).toLocaleString('fr-FR')}</span>
-                            </div>
-                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--dd-ink-soft)' }}>
-                              {log.actor_name || 'Système'}{log.actor_role ? ` (${log.actor_role})` : ''}{log.details ? ` — ${log.details}` : ''}
-                            </p>
-                          </div>
+                        <div key={log.id} className="flex items-start gap-2 px-1 py-2 border-b last:border-0" style={{ borderColor: 'var(--dd-border)' }}>
+                          <span className="shrink-0" style={{ color: 'var(--dd-ink-faint)' }}>{time}</span>
+                          <span className="shrink-0 font-bold" style={{ color: 'var(--dd-accent)' }}>— {log.actor_name || roleLabel} —</span>
+                          <span className="truncate" style={{ color: 'var(--dd-ink)' }}>
+                            {actionLabel}{log.details ? ` (${log.details})` : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'logs' && (
+            <div className="space-y-4">
+              <div className="rounded-2xl p-4 border space-y-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--dd-ink-faint)' }} />
+                    <input
+                      type="text"
+                      value={logSearch}
+                      onChange={(e) => setLogSearch(e.target.value)}
+                      placeholder="Rechercher (message, source, référence)..."
+                      className="w-full pl-8 pr-3 py-2 rounded-xl text-xs"
+                      style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                    />
+                  </div>
+                  <select
+                    value={logLevel}
+                    onChange={(e) => setLogLevel(e.target.value as LogLevel | 'all')}
+                    className="px-3 py-2 rounded-xl text-xs"
+                    style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                  >
+                    <option value="all">Tous les niveaux</option>
+                    <option value="error">Erreur</option>
+                    <option value="warn">Avertissement</option>
+                    <option value="info">Info</option>
+                  </select>
+                  <select
+                    value={logSource}
+                    onChange={(e) => setLogSource(e.target.value)}
+                    className="px-3 py-2 rounded-xl text-xs"
+                    style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                  >
+                    <option value="all">Toutes les sources</option>
+                    {logSources.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                {logs.length === 0 ? (
+                  <div className="text-center py-12 text-xs" style={{ color: 'var(--dd-ink-faint)' }}>
+                    <ScrollText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    Aucune entrée ne correspond.
+                  </div>
+                ) : (
+                  <div className="max-h-[36rem] overflow-y-auto">
+                    {logs.map((log) => {
+                      const levelColor = log.level === 'error' ? '#f43f5e' : log.level === 'warn' ? '#fbbf24' : '#34d399';
+                      return (
+                        <div key={log.id} className="flex items-start gap-3 px-4 py-3 border-b last:border-0 font-mono text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                          <span className="font-bold shrink-0" style={{ color: levelColor }}>
+                            [{log.level.toUpperCase()}] {new Date(log.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span className="shrink-0" style={{ color: 'var(--dd-accent)' }}>{log.source}</span>
+                          {log.reference && <span className="shrink-0" style={{ color: 'var(--dd-ink-faint)' }}>{log.reference}</span>}
+                          <span className="truncate" style={{ color: 'var(--dd-ink)' }}>{log.message}</span>
                         </div>
                       );
                     })}
