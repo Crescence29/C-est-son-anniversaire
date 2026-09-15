@@ -477,3 +477,33 @@ export interface IntegrityCheckResult {
   status: 'ok' | 'warning' | 'error';
   detail: string;
 }
+
+// ---------------------------------------------------------------------------
+// Fichiers et médias — voir src/server/mediaAudit.ts et
+// src/server/routes/developer.ts (/media/summary, /media/check-links,
+// /media/cleanup-orphan-references). Cette plateforme ne stocke aucun
+// fichier elle-même : tout est audité comme des liens externes.
+// ---------------------------------------------------------------------------
+
+export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'autre';
+
+export interface MediaSummary {
+  total: number;
+  byKind: Record<string, number>;
+  byDomain: Record<string, number>;
+}
+
+export interface MediaReference {
+  url: string;
+  kind: MediaKind;
+  source: string;
+  sourceId: string;
+}
+
+export interface MediaLinkCheckResult extends MediaReference {
+  ok: boolean;
+  status: number | null;
+  contentType: string | null;
+  contentLengthBytes: number | null;
+  error?: string;
+}

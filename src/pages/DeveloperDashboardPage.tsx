@@ -3,7 +3,7 @@ import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
-  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database,
+  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -15,6 +15,7 @@ import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
   LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
+  MediaSummary, MediaLinkCheckResult,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -70,6 +71,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   password_reset_by_admin: KeyRound,
   system_backup_created: DatabaseBackup,
   database_integrity_check: Database,
+  media_orphans_cleaned: Trash2,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -86,6 +88,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   password_reset_by_admin: 'Accès réinitialisé',
   system_backup_created: 'Sauvegarde technique déclenchée',
   database_integrity_check: 'Vérification d’intégrité de la base lancée',
+  media_orphans_cleaned: 'Références médias orphelines nettoyées',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -107,7 +110,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -383,6 +386,57 @@ export const DeveloperDashboardPage: React.FC = () => {
     return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
+  // ---- Fichiers et médias ----
+  const [mediaSummary, setMediaSummary] = useState<MediaSummary | null>(null);
+  const [mediaCdn, setMediaCdn] = useState<{ configured: boolean; detail: string } | null>(null);
+  const [mediaExternalStorage, setMediaExternalStorage] = useState<{ configured: boolean; detail: string } | null>(null);
+  const [mediaAllowedFormats, setMediaAllowedFormats] = useState<Record<string, string[]>>({});
+  const [mediaCheckRunning, setMediaCheckRunning] = useState(false);
+  const [mediaCheckResult, setMediaCheckResult] = useState<{ checkedCount: number; totalCount: number; broken: MediaLinkCheckResult[]; large: MediaLinkCheckResult[]; checkedAt: string } | null>(null);
+  const [mediaCleanupResult, setMediaCleanupResult] = useState<{ deletedDeliverables: number; deletedFavorites: number } | null>(null);
+  const [mediaCleanupRunning, setMediaCleanupRunning] = useState(false);
+
+  const fetchMediaSummary = async () => {
+    try {
+      const res = await api.get<{ summary: MediaSummary; cdn: any; externalStorage: any; allowedFormats: Record<string, string[]> }>('/developer/media/summary');
+      setMediaSummary(res.summary);
+      setMediaCdn(res.cdn);
+      setMediaExternalStorage(res.externalStorage);
+      setMediaAllowedFormats(res.allowedFormats || {});
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => { fetchMediaSummary(); }, []);
+
+  const runMediaLinkCheck = async () => {
+    setMediaCheckRunning(true);
+    try {
+      const res = await api.post<typeof mediaCheckResult>('/developer/media/check-links', {});
+      setMediaCheckResult(res);
+    } catch (err: any) {
+      alert(err?.message || 'Échec de la vérification des liens.');
+    } finally {
+      setMediaCheckRunning(false);
+    }
+  };
+
+  const runMediaCleanup = async () => {
+    if (!window.confirm('Supprimer définitivement les références orphelines (livrables/favoris pointant vers une commande ou une prestation supprimée) ?')) return;
+    setMediaCleanupRunning(true);
+    try {
+      const res = await api.post<{ deletedDeliverables: number; deletedFavorites: number }>('/developer/media/cleanup-orphan-references', {});
+      setMediaCleanupResult(res);
+    } catch (err: any) {
+      alert(err?.message || 'Échec du nettoyage.');
+    } finally {
+      setMediaCleanupRunning(false);
+    }
+  };
+
+  const MEDIA_KIND_LABEL: Record<string, string> = { image: 'Images', video: 'Vidéos', audio: 'Audio', document: 'Documents', autre: 'Autres' };
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -502,6 +556,7 @@ export const DeveloperDashboardPage: React.FC = () => {
         { key: 'system', label: 'État système', icon: Gauge },
         { key: 'logs', label: `Journal technique (${logs.length})`, icon: ScrollText },
         { key: 'database', label: 'Base de données', icon: Database },
+        { key: 'media', label: 'Fichiers & médias', icon: ImageIcon },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -516,6 +571,7 @@ export const DeveloperDashboardPage: React.FC = () => {
     system: { title: 'État système', subtitle: 'Santé technique de la plateforme — aucune donnée client ici' },
     logs: { title: 'Journal technique', subtitle: 'Erreurs serveur, API, paiement, synchronisation, authentification et JavaScript' },
     database: { title: 'Base de données', subtitle: 'État MySQL en direct, tables, migrations et vérification d’intégrité' },
+    media: { title: 'Fichiers & médias', subtitle: 'Audit des liens réels (aucun fichier n’est hébergé sur ce serveur)' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -820,6 +876,170 @@ export const DeveloperDashboardPage: React.FC = () => {
                 <p className="text-[11px] mt-3" style={{ color: 'var(--dd-ink-faint)' }}>
                   Par sécurité, aucune restauration automatique n'est proposée depuis ce tableau de bord : une restauration écraserait des données clients et commandes réelles. Utilisez les sauvegardes téléchargées pour une restauration manuelle si nécessaire.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'media' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl p-4 border text-xs" style={{ background: 'var(--dd-accent-soft)', borderColor: 'var(--dd-border)', color: 'var(--dd-accent)' }}>
+                Cette application n'héberge aucun fichier elle-même : chaque image, vidéo ou document est un lien externe saisi par l'équipe. Les chiffres ci-dessous décrivent les liens réellement référencés dans la base, pas un espace disque.
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <ImageIcon className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Médias référencés
+                  </h3>
+                  <button onClick={fetchMediaSummary} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                    <RefreshCw className="w-3 h-3" /> Actualiser
+                  </button>
+                </div>
+                {!mediaSummary ? (
+                  <div className="text-center py-8 text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+                      {(['image', 'video', 'audio', 'document', 'autre'] as const).map((kind) => (
+                        <div key={kind} className="rounded-xl p-3" style={{ background: 'var(--dd-panel-hover)' }}>
+                          <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>{MEDIA_KIND_LABEL[kind]}</div>
+                          <div className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{mediaSummary.byKind[kind] || 0}</div>
+                        </div>
+                      ))}
+                      <div className="rounded-xl p-3" style={{ background: 'var(--dd-panel-hover)' }}>
+                        <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>Total liens</div>
+                        <div className="text-sm font-bold" style={{ color: 'var(--dd-accent)' }}>{mediaSummary.total}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-bold mb-2" style={{ color: 'var(--dd-ink)' }}>Hébergeurs utilisés (stockage externe en usage)</div>
+                    <div className="space-y-1">
+                      {Object.entries(mediaSummary.byDomain).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
+                        <div key={domain} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)' }}>
+                          <span className="font-mono truncate" style={{ color: 'var(--dd-ink-soft)' }}>{domain}</span>
+                          <span className="font-bold shrink-0" style={{ color: 'var(--dd-ink)' }}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${mediaCdn?.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                    <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>CDN</span>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{mediaCdn?.detail}</p>
+                </div>
+                <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${mediaExternalStorage?.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                    <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Stockage externe</span>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{mediaExternalStorage?.detail}</p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-base mb-3" style={{ color: 'var(--dd-ink)' }}>Formats autorisés (référence)</h3>
+                <div className="space-y-2">
+                  {Object.entries(mediaAllowedFormats).map(([kind, exts]) => (
+                    <div key={kind} className="flex items-start gap-2 text-xs">
+                      <span className="font-bold shrink-0 w-20" style={{ color: 'var(--dd-ink)' }}>{MEDIA_KIND_LABEL[kind] || kind}</span>
+                      <span className="font-mono" style={{ color: 'var(--dd-ink-soft)' }}>{exts.join(', ')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <LinkIcon className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Vérifier les liens
+                  </h3>
+                  <button
+                    onClick={runMediaLinkCheck}
+                    disabled={mediaCheckRunning}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                    style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}
+                  >
+                    {mediaCheckRunning ? 'Vérification...' : 'Lancer la vérification'}
+                  </button>
+                </div>
+                {!mediaCheckResult ? (
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>
+                    Vérifie chaque lien médias (jusqu'à 300 à la fois) : détecte les liens cassés et les fichiers volumineux (plus de 5 Mo, d'après l'en-tête renvoyé par l'hébergeur).
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>
+                      {mediaCheckResult.checkedCount} lien(s) vérifié(s) sur {mediaCheckResult.totalCount} au total — {new Date(mediaCheckResult.checkedAt).toLocaleString('fr-FR')}
+                    </p>
+
+                    <div>
+                      <div className="text-xs font-bold mb-2 flex items-center gap-1.5" style={{ color: mediaCheckResult.broken.length ? '#f43f5e' : 'var(--dd-ink)' }}>
+                        <AlertTriangle className="w-3.5 h-3.5" /> Liens cassés ({mediaCheckResult.broken.length})
+                      </div>
+                      {mediaCheckResult.broken.length === 0 ? (
+                        <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucun.</p>
+                      ) : (
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--dd-border)' }}>
+                          {mediaCheckResult.broken.map((r, i) => (
+                            <div key={i} className="px-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                              <div style={{ color: 'var(--dd-ink)' }}>{r.source} — <span className="font-mono break-all" style={{ color: 'var(--dd-ink-soft)' }}>{r.url}</span></div>
+                              <div style={{ color: '#f43f5e' }}>{r.status ? `HTTP ${r.status}` : r.error}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold mb-2" style={{ color: 'var(--dd-ink)' }}>Fichiers volumineux ({mediaCheckResult.large.length})</div>
+                      {mediaCheckResult.large.length === 0 ? (
+                        <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucun au-dessus de 5 Mo.</p>
+                      ) : (
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--dd-border)' }}>
+                          {mediaCheckResult.large.map((r, i) => (
+                            <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                              <span className="truncate" style={{ color: 'var(--dd-ink-soft)' }}>{r.source} — <span className="font-mono">{r.url}</span></span>
+                              <span className="font-bold shrink-0" style={{ color: 'var(--dd-ink)' }}>{formatBytes(r.contentLengthBytes || 0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <Trash2 className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Nettoyer les références orphelines
+                  </h3>
+                  <button
+                    onClick={runMediaCleanup}
+                    disabled={mediaCleanupRunning}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                    style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}
+                  >
+                    {mediaCleanupRunning ? 'Nettoyage...' : 'Nettoyer maintenant'}
+                  </button>
+                </div>
+                <p className="text-xs mb-2" style={{ color: 'var(--dd-ink-faint)' }}>
+                  Supprime les livrables et favoris en base qui pointent vers une commande ou une prestation déjà supprimée. Cette plateforme ne stockant aucun fichier elle-même, il n'y a pas de « fichier » à effacer physiquement — seulement la référence orpheline en base.
+                </p>
+                {mediaCleanupResult && (
+                  <p className="text-xs font-bold" style={{ color: 'var(--dd-accent)' }}>
+                    {mediaCleanupResult.deletedDeliverables} référence(s) de livrable et {mediaCleanupResult.deletedFavorites} favori(s) supprimés.
+                  </p>
+                )}
               </div>
             </div>
           )}

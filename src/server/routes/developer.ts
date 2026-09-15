@@ -12,6 +12,7 @@ import { getLogs, getLogSources, recordLog, LogLevel } from '../logs.ts';
 import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
+import { collectMediaReferences, getMediaSummary, checkLinks, ALLOWED_FORMATS } from '../mediaAudit.ts';
 import crypto from 'crypto';
 
 const router = Router();
@@ -346,6 +347,85 @@ router.post('/database/integrity-check', async (req: AuthRequest, res: Response)
     recordLog('error', 'Database', `Échec de la vérification d'intégrité : ${error.message}`);
     res.status(500).json({ error: "Échec de la vérification d'intégrité.", detail: error.message, results });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Fichiers et médias — cette plateforme ne stocke aucun fichier sur son
+// propre serveur : chaque photo/vidéo/document est un lien externe collé par
+// l'équipe (pas d'upload). Impossible donc d'afficher un vrai espace disque
+// utilisé — cette section audite les LIENS réellement référencés dans la
+// base à la place, sans jamais fabriquer une taille de stockage.
+// ---------------------------------------------------------------------------
+
+router.get('/media/summary', (req: AuthRequest, res: Response): void => {
+  const cdnConfigured = Boolean(process.env.CDN_URL);
+  const externalStorageConfigured = Boolean(process.env.AWS_S3_BUCKET || process.env.CLOUDINARY_URL);
+  res.json({
+    summary: getMediaSummary(),
+    cdn: {
+      configured: cdnConfigured,
+      detail: cdnConfigured ? 'CDN configuré (CDN_URL).' : 'Aucun CDN configuré : chaque lien est chargé directement depuis son hébergeur d’origine.',
+    },
+    externalStorage: {
+      configured: externalStorageConfigured,
+      detail: externalStorageConfigured
+        ? 'Stockage externe configuré.'
+        : "Aucun stockage de fichiers propre (pas de S3, pas de Cloudinary) : l'équipe colle des liens vers des fichiers déjà hébergés ailleurs.",
+    },
+    allowedFormats: ALLOWED_FORMATS,
+    note: "Cette application n'héberge aucun fichier elle-même : les tailles ci-dessous viennent d'une vérification en direct des liens, pas d'un espace disque réel.",
+  });
+});
+
+router.post('/media/check-links', async (req: AuthRequest, res: Response): Promise<void> => {
+  const refs = collectMediaReferences();
+  const CAP = 300;
+  const capped = refs.slice(0, CAP);
+  try {
+    const results = await checkLinks(capped, { concurrency: 8, timeoutMs: 6000 });
+    const broken = results.filter((r) => !r.ok);
+    const LARGE_THRESHOLD_BYTES = 5 * 1024 * 1024;
+    const large = results
+      .filter((r) => (r.contentLengthBytes || 0) > LARGE_THRESHOLD_BYTES)
+      .sort((a, b) => (b.contentLengthBytes || 0) - (a.contentLengthBytes || 0));
+
+    res.json({
+      checkedCount: results.length,
+      totalCount: refs.length,
+      truncated: refs.length > CAP,
+      broken,
+      large,
+      checkedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    recordLog('error', 'Media', `Échec de la vérification des liens médias : ${error.message}`);
+    res.status(500).json({ error: 'Échec de la vérification des liens.', detail: error.message });
+  }
+});
+
+router.post('/media/cleanup-orphan-references', (req: AuthRequest, res: Response): void => {
+  const orderIds = new Set(db.orders.map((o) => o.id));
+  const serviceIds = new Set(db.services.map((s) => s.id));
+  const orphanDeliverableIds = new Set(db.orderDeliverables.filter((d) => !orderIds.has(d.order_id)).map((d) => d.id));
+  const orphanFavoriteIds = new Set(db.favorites.filter((f) => !serviceIds.has(f.service_id)).map((f) => f.id));
+
+  for (let i = db.orderDeliverables.length - 1; i >= 0; i--) {
+    if (orphanDeliverableIds.has(db.orderDeliverables[i].id)) db.orderDeliverables.splice(i, 1);
+  }
+  for (let i = db.favorites.length - 1; i >= 0; i--) {
+    if (orphanFavoriteIds.has(db.favorites[i].id)) db.favorites.splice(i, 1);
+  }
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'media_orphans_cleaned',
+    details: `${orphanDeliverableIds.size} référence(s) de livrable et ${orphanFavoriteIds.size} favori(s) orphelin(s) supprimés.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ deletedDeliverables: orphanDeliverableIds.size, deletedFavorites: orphanFavoriteIds.size });
 });
 
 // ---------------------------------------------------------------------------
