@@ -305,6 +305,13 @@ export interface SystemStatusError {
   at: string;
 }
 
+export interface ConnectedUserSummary {
+  id: string;
+  name: string;
+  role: UserRole;
+  lastActiveAt: string;
+}
+
 export interface SystemStatus {
   serverState: ServiceHealthState;
   apiState: ServiceHealthState;
@@ -314,6 +321,7 @@ export interface SystemStatus {
   requestCount: number;
   recentErrors: SystemStatusError[];
   connectedUsersCount: number;
+  connectedUsers: ConnectedUserSummary[];
   appVersion: string;
   lastDeployAt: string;
   lastBackupAt: string | null;

@@ -6,6 +6,7 @@ interface KpiCardProps {
   icon: React.ElementType;
   accent?: 'accent' | 'emerald' | 'amber' | 'rose';
   sublabel?: string;
+  onClick?: () => void;
 }
 
 const ACCENT_STYLES: Record<NonNullable<KpiCardProps['accent']>, { icon: string; ring: string }> = {
@@ -15,11 +16,16 @@ const ACCENT_STYLES: Record<NonNullable<KpiCardProps['accent']>, { icon: string;
   rose: { icon: 'bg-rose-500/15 text-rose-400', ring: 'from-rose-500/10' },
 };
 
-export const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon: Icon, accent = 'accent', sublabel }) => {
+export const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon: Icon, accent = 'accent', sublabel, onClick }) => {
   const style = ACCENT_STYLES[accent];
+  const Wrapper = onClick ? 'button' : 'div';
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 border dd-fade-in`} style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+    <Wrapper
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-2xl p-5 border dd-fade-in text-left w-full ${onClick ? 'cursor-pointer transition-transform hover:-translate-y-0.5 hover:border-[color:var(--dd-accent)]' : ''}`}
+      style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}
+    >
       <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full bg-gradient-to-br ${style.ring} to-transparent blur-2xl pointer-events-none`} />
       <div className="relative flex items-start justify-between gap-3">
         <div>
@@ -34,11 +40,16 @@ export const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon: Icon, acce
               {sublabel}
             </span>
           )}
+          {onClick && (
+            <span className="text-[10px] mt-1.5 block font-bold" style={{ color: 'var(--dd-accent)' }}>
+              Voir le détail →
+            </span>
+          )}
         </div>
         <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${style.icon}`}>
           <Icon className="w-4.5 h-4.5" />
         </div>
       </div>
-    </div>
+    </Wrapper>
   );
 };

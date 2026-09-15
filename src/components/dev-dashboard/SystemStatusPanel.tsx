@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Server, Database, HardDrive, Cpu, MemoryStick, Clock, Users, Tag,
-  Gauge, ListChecks, AlertOctagon, DatabaseBackup, RotateCw,
+  Gauge, ListChecks, AlertOctagon, DatabaseBackup, RotateCw, X,
 } from 'lucide-react';
 import { api } from '../../utils/api.ts';
 import { SystemStatus, ServiceHealthState } from '../../types.ts';
 import { KpiCard } from './KpiCard.tsx';
 import { SkeletonCard } from './SkeletonCard.tsx';
+
+const ROLE_LABEL: Record<string, string> = { client: 'Client', staff: 'Staff', admin: 'Admin' };
 
 const STATE_META: Record<ServiceHealthState, { label: string; dot: string; text: string }> = {
   ok: { label: 'Opérationnel', dot: 'bg-emerald-400', text: 'text-emerald-400' },
@@ -57,6 +59,32 @@ const UsageBar: React.FC<{ label: string; icon: React.ElementType; percent: numb
   </div>
 );
 
+const DetailModal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
+  <div
+    className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm"
+    onClick={onClose}
+  >
+    <div
+      className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl border shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+      style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>{title}</h3>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+          style={{ color: 'var(--dd-ink-soft)' }}
+          aria-label="Fermer"
+        >
+          <X className="w-4.5 h-4.5" />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
 interface SystemStatusPanelProps {
   onBackup: () => Promise<void>;
   isBackingUp: boolean;
@@ -66,6 +94,7 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [detail, setDetail] = useState<'errors' | 'users' | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -122,8 +151,8 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard label="Temps de réponse" value={`${status.avgResponseTimeMs} ms`} icon={Clock} accent="accent" />
         <KpiCard label="Requêtes traitées" value={status.requestCount.toLocaleString('fr-FR')} icon={ListChecks} accent="emerald" />
-        <KpiCard label="Erreurs récentes" value={status.recentErrors.length} icon={AlertOctagon} accent={status.recentErrors.length > 0 ? 'rose' : 'emerald'} />
-        <KpiCard label="Utilisateurs connectés" value={status.connectedUsersCount} sublabel="actifs (15 min)" icon={Users} accent="amber" />
+        <KpiCard label="Erreurs récentes" value={status.recentErrors.length} icon={AlertOctagon} accent={status.recentErrors.length > 0 ? 'rose' : 'emerald'} onClick={() => setDetail('errors')} />
+        <KpiCard label="Utilisateurs connectés" value={status.connectedUsersCount} sublabel="actifs (15 min)" icon={Users} accent="amber" onClick={() => setDetail('users')} />
         <KpiCard label="Version" value={`v${status.appVersion}`} icon={Tag} accent="accent" />
         <KpiCard label="Disponibilité" value={formatUptime(status.uptimeSeconds)} sublabel="depuis le dernier déploiement" icon={Server} accent="emerald" />
       </div>
@@ -181,26 +210,45 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
         </div>
       </div>
 
-      <div className="rounded-2xl p-5 border space-y-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
-        <h4 className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--dd-ink-soft)' }}>
-          Erreurs récentes {status.recentErrors.length > 0 ? `(${status.recentErrors.length})` : ''}
-        </h4>
-        {status.recentErrors.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucune erreur depuis le dernier déploiement.</p>
-        ) : (
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            {status.recentErrors.map((err, i) => (
-              <div key={i} className="flex items-start justify-between gap-3 py-1.5 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
-                <div className="min-w-0">
-                  <p className="font-mono truncate" style={{ color: 'var(--dd-ink)' }}>{err.message}</p>
-                  <p className="text-[10px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{err.path}</p>
+      {detail === 'errors' && (
+        <DetailModal title={`Erreurs récentes ${status.recentErrors.length > 0 ? `(${status.recentErrors.length})` : ''}`} onClose={() => setDetail(null)}>
+          {status.recentErrors.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucune erreur depuis le dernier déploiement.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {status.recentErrors.map((err, i) => (
+                <div key={i} className="flex items-start justify-between gap-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                  <div className="min-w-0">
+                    <p className="font-mono break-words" style={{ color: 'var(--dd-ink)' }}>{err.message}</p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--dd-ink-faint)' }}>{err.path}</p>
+                  </div>
+                  <span className="text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--dd-ink-faint)' }}>{timeAgo(err.at)}</span>
                 </div>
-                <span className="text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--dd-ink-faint)' }}>{timeAgo(err.at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </DetailModal>
+      )}
+
+      {detail === 'users' && (
+        <DetailModal title={`Utilisateurs connectés (${status.connectedUsers.length})`} onClose={() => setDetail(null)}>
+          {status.connectedUsers.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Personne n’a été actif au cours des 15 dernières minutes.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {status.connectedUsers.map((u) => (
+                <div key={u.id} className="flex items-center justify-between gap-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate" style={{ color: 'var(--dd-ink)' }}>{u.name}</p>
+                    <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--dd-ink-faint)' }}>{ROLE_LABEL[u.role] || u.role}</p>
+                  </div>
+                  <span className="text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--dd-ink-faint)' }}>{timeAgo(u.lastActiveAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </DetailModal>
+      )}
     </div>
   );
 };

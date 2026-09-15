@@ -660,11 +660,18 @@ router.get('/system-status', async (req: AuthRequest, res: Response): Promise<vo
   const metrics = getMetricsSnapshot();
 
   const fifteenMinAgo = Date.now() - 15 * 60_000;
-  const connectedUsersCount = new Set(
-    db.activityLogs
-      .filter((log) => log.actor_id && new Date(log.created_at).getTime() >= fifteenMinAgo)
-      .map((log) => log.actor_id)
-  ).size;
+  const lastActiveByUser = new Map<string, string>();
+  for (const log of db.activityLogs) {
+    if (!log.actor_id || new Date(log.created_at).getTime() < fifteenMinAgo) continue;
+    if (!lastActiveByUser.has(log.actor_id)) lastActiveByUser.set(log.actor_id, log.created_at);
+  }
+  const connectedUsers = Array.from(lastActiveByUser.entries())
+    .map(([actorId, lastActiveAt]) => {
+      const u = db.users.find((usr) => usr.id === actorId);
+      return { id: actorId, name: u?.full_name || 'Utilisateur supprimé', role: u?.role || 'client', lastActiveAt };
+    })
+    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+  const connectedUsersCount = connectedUsers.length;
 
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -694,6 +701,7 @@ router.get('/system-status', async (req: AuthRequest, res: Response): Promise<vo
       requestCount: metrics.requestCount,
       recentErrors: metrics.recentErrors,
       connectedUsersCount,
+      connectedUsers,
       appVersion: getAppVersion(),
       lastDeployAt: metrics.serverStartedAt,
       lastBackupAt: db.lastBackupAt,
