@@ -12,6 +12,8 @@ import { AppLogo, refreshAppLogo } from '../components/AppLogo.tsx';
 import { DevSidebar, DevNavGroup } from '../components/dev-dashboard/DevSidebar.tsx';
 import { DevTopbar } from '../components/dev-dashboard/DevTopbar.tsx';
 import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel.tsx';
+import { RefreshLoadingOverlay } from '../components/RefreshLoadingOverlay.tsx';
+import { useRefreshProgress } from '../hooks/useRefreshProgress.ts';
 import {
   ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
@@ -131,6 +133,15 @@ export const DeveloperDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config' | 'maintenance' | 'security'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Animation d'actualisation (gâteau + bougies) partagée avec le reste du
+  // site — une instance par bouton « Actualiser » distinct, comme dans
+  // AdminDashboardPage.tsx.
+  const topbarRefreshState = useRefreshProgress();
+  const activityRefreshState = useRefreshProgress();
+  const databaseRefreshState = useRefreshProgress();
+  const mediaRefreshState = useRefreshProgress();
+  const deploymentRefreshState = useRefreshProgress();
 
   // ---- Comptes internes ----
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
@@ -834,7 +845,7 @@ export const DeveloperDashboardPage: React.FC = () => {
           title={TAB_TITLES[activeTab].title}
           subtitle={TAB_TITLES[activeTab].subtitle}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
-          onRefresh={() => { fetchAccounts(); fetchActivityLogs(); }}
+          onRefresh={() => topbarRefreshState.run(() => Promise.all([fetchAccounts(), fetchActivityLogs()]))}
           user={currentUser}
           roleLabel="Développeur"
         />
@@ -858,7 +869,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                     Journal d’activité
                   </h3>
                   <button
-                    onClick={fetchActivityLogs}
+                    onClick={() => activityRefreshState.run(fetchActivityLogs)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border"
                     style={{ color: 'var(--dd-accent)', borderColor: 'var(--dd-accent)' }}
                   >
@@ -975,7 +986,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                   </h3>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={fetchDatabaseData}
+                      onClick={() => databaseRefreshState.run(fetchDatabaseData)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
                       style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}
                     >
@@ -1131,7 +1142,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                     <ImageIcon className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
                     Médias référencés
                   </h3>
-                  <button onClick={fetchMediaSummary} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                  <button onClick={() => mediaRefreshState.run(fetchMediaSummary)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
                     <RefreshCw className="w-3 h-3" /> Actualiser
                   </button>
                 </div>
@@ -1291,7 +1302,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                     <Rocket className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
                     Version en production
                   </h3>
-                  <button onClick={fetchDeployment} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                  <button onClick={() => deploymentRefreshState.run(fetchDeployment)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
                     <RefreshCw className="w-3 h-3" /> Actualiser
                   </button>
                 </div>
@@ -2371,6 +2382,42 @@ export const DeveloperDashboardPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <RefreshLoadingOverlay
+        status={topbarRefreshState.status}
+        progress={topbarRefreshState.progress}
+        errorMessage={topbarRefreshState.errorMessage}
+        onRetry={topbarRefreshState.retry}
+        onDismiss={topbarRefreshState.dismiss}
+      />
+      <RefreshLoadingOverlay
+        status={activityRefreshState.status}
+        progress={activityRefreshState.progress}
+        errorMessage={activityRefreshState.errorMessage}
+        onRetry={activityRefreshState.retry}
+        onDismiss={activityRefreshState.dismiss}
+      />
+      <RefreshLoadingOverlay
+        status={databaseRefreshState.status}
+        progress={databaseRefreshState.progress}
+        errorMessage={databaseRefreshState.errorMessage}
+        onRetry={databaseRefreshState.retry}
+        onDismiss={databaseRefreshState.dismiss}
+      />
+      <RefreshLoadingOverlay
+        status={mediaRefreshState.status}
+        progress={mediaRefreshState.progress}
+        errorMessage={mediaRefreshState.errorMessage}
+        onRetry={mediaRefreshState.retry}
+        onDismiss={mediaRefreshState.dismiss}
+      />
+      <RefreshLoadingOverlay
+        status={deploymentRefreshState.status}
+        progress={deploymentRefreshState.progress}
+        errorMessage={deploymentRefreshState.errorMessage}
+        onRetry={deploymentRefreshState.retry}
+        onDismiss={deploymentRefreshState.dismiss}
+      />
     </div>
   );
 };
