@@ -543,6 +543,48 @@ router.post('/accounts/:id/impersonate', (req: AuthRequest, res: Response): void
   res.json({ message: `Connexion en tant que ${user.full_name}.`, token, refreshToken, user });
 });
 
+// DELETE /api/developer/accounts/:id — comptes internes uniquement,
+// suppression définitive (pas une désactivation).
+router.delete('/accounts/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = findInternalAccount(req.params.id, res);
+  if (!user) return;
+
+  if (user.role === 'admin') {
+    const adminCount = db.users.filter((u) => u.role === 'admin').length;
+    if (adminCount <= 1) {
+      res.status(400).json({ error: 'Impossible de supprimer le dernier compte administrateur.' });
+      return;
+    }
+  }
+
+  const { id, full_name, email, role } = user;
+
+  try {
+    await db.deleteUser(id);
+  } catch (error: any) {
+    if (error?.errno === 1451) {
+      res.status(409).json({ error: `${full_name} a des commandes, avis ou livrables liés à son compte et ne peut pas être supprimé — désactivez-le plutôt.` });
+      return;
+    }
+    console.error('[Developer] Échec de la suppression de compte:', error);
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
+    return;
+  }
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'user_deleted',
+    target_type: 'user',
+    target_id: id,
+    details: `Compte interne "${full_name}" (${email}, rôle ${role}) supprimé définitivement par le développeur.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: `${full_name} a été supprimé.` });
+});
+
 // ---------------------------------------------------------------------------
 // Identité visuelle (logo) — seul réglage du site que le développeur peut
 // modifier directement ; le reste du contenu de la vitrine reste une

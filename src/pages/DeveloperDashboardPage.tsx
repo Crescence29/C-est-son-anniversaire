@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
-  Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw,
+  Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -188,6 +188,16 @@ export const DeveloperDashboardPage: React.FC = () => {
       window.location.href = '/';
     } catch (err: any) {
       alert(err?.message || 'Erreur lors de la connexion directe.');
+    }
+  };
+
+  const handleDeleteAccount = async (account: InternalAccount) => {
+    if (!window.confirm(`Supprimer définitivement le compte de ${account.full_name} (${account.email}) ? Cette action est irréversible.`)) return;
+    try {
+      await api.delete(`/developer/accounts/${account.id}`);
+      fetchAccounts();
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la suppression.');
     }
   };
 
@@ -547,6 +557,9 @@ export const DeveloperDashboardPage: React.FC = () => {
                                     </button>
                                     <button onClick={() => handleForceLogout(a)} title="Forcer la déconnexion" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
                                       <LogOut className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => handleDeleteAccount(a)} title="Supprimer définitivement" className="p-1.5 rounded-lg" style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e' }}>
+                                      <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </>
                                 )}

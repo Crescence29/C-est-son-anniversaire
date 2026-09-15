@@ -318,7 +318,16 @@ class DataStore {
   }
 
   private makePersistentArray<T extends Record<string, any>>(source: T[], table: TableName): T[] {
-    const rows = source.map((row) => this.wrapRow(row, table));
+    return this.wrapArray(source.map((row) => this.wrapRow(row, table)), table);
+  }
+
+  // Separate from makePersistentArray so a caller that already holds
+  // wrapped rows (e.g. after filtering out a deleted one) can rebuild the
+  // array proxy without re-wrapping each row a second time — nesting
+  // proxies that way still works, but each extra layer means an extra
+  // redundant UPDATE query queued per property write, compounding with
+  // every future delete.
+  private wrapArray<T extends Record<string, any>>(rows: T[], table: TableName): T[] {
     const store = this;
     const handler: ProxyHandler<T[]> = {
       get(target, property, receiver) {
@@ -456,6 +465,19 @@ class DataStore {
         session.revoked_at = now;
       }
     }
+  }
+
+  // Deletion needs to be synchronous and awaited, unlike every other write in
+  // this store: those are fire-and-forget through `queue()`, whose errors
+  // are logged but never reach the caller — fine for an UPDATE, but a DELETE
+  // can legitimately fail (a staff account that uploaded deliverables is
+  // blocked by an ON DELETE RESTRICT foreign key) and the API needs to
+  // report that instead of claiming success while the DB row survives and
+  // the in-memory copy silently doesn't.
+  async deleteUser(id: string): Promise<void> {
+    await this.pool.execute('DELETE FROM `users` WHERE `id` = ?', [id]);
+    this.passwords.delete(id);
+    this.users = this.wrapArray(this.users.filter((u) => u.id !== id), 'users');
   }
 
   updateSiteSettings(partial: Partial<SiteSettings>) {
