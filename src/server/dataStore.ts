@@ -1,5 +1,13 @@
 import mysql, { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVideo, OrderDeliverable, Favorite, Notification, ActivityLog, OrderStatus, UserRole, StaffDashboardStats, AdminDashboardStats, ClientDashboardStats, SiteSettings, FaqItem, SupportMessage, AccountSession } from '../types.ts';
+import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVideo, OrderDeliverable, Favorite, Notification, ActivityLog, OrderStatus, UserRole, StaffDashboardStats, AdminDashboardStats, ClientDashboardStats, SiteSettings, FaqItem, SupportMessage, AccountSession, ApiKeySummary, WebhookSummary, WebhookDelivery } from '../types.ts';
+
+interface ApiKeyRecord extends ApiKeySummary {
+  key_hash: string;
+}
+
+interface WebhookRecord extends WebhookSummary {
+  secret: string;
+}
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logo_mode: 'image',
@@ -39,7 +47,8 @@ interface DbConfig {
 type TableName =
   | 'users' | 'categories' | 'services' | 'orders' | 'payments' | 'commissions'
   | 'reviews' | 'featured_videos' | 'order_deliverables' | 'favorites' | 'notifications' | 'refresh_tokens'
-  | 'activity_logs' | 'faq_items' | 'support_messages' | 'sessions';
+  | 'activity_logs' | 'faq_items' | 'support_messages' | 'sessions'
+  | 'api_keys' | 'webhooks' | 'webhook_deliveries';
 
 const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
   users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'admin_level', 'permissions', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
@@ -58,6 +67,9 @@ const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
   faq_items: { primaryKey: 'id', columns: ['id', 'question', 'answer', 'position', 'is_active', 'created_at', 'updated_at'] },
   support_messages: { primaryKey: 'id', columns: ['id', 'user_id', 'subject', 'message', 'status', 'reply', 'replied_by', 'replied_by_name', 'replied_at', 'created_at', 'updated_at'] },
   sessions: { primaryKey: 'id', columns: ['id', 'user_id', 'ip_address', 'user_agent', 'device_label', 'created_at', 'last_seen_at', 'revoked_at'] },
+  api_keys: { primaryKey: 'id', columns: ['id', 'name', 'key_prefix', 'key_hash', 'scopes', 'status', 'created_by', 'last_used_at', 'request_count', 'created_at', 'revoked_at'] },
+  webhooks: { primaryKey: 'id', columns: ['id', 'url', 'event', 'secret', 'status', 'created_by', 'last_triggered_at', 'last_status_code', 'created_at'] },
+  webhook_deliveries: { primaryKey: 'id', columns: ['id', 'webhook_id', 'event', 'status_code', 'success', 'error_message', 'created_at'] },
 };
 
 function envConfig(): DbConfig {
@@ -79,10 +91,10 @@ function iso(value: unknown): string | undefined {
 
 function normalizeRow(row: Record<string, any>): Record<string, any> {
   const out = { ...row };
-  for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at', 'last_seen_at']) {
+  for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at', 'last_seen_at', 'last_used_at', 'last_triggered_at']) {
     if (key in out && out[key] != null) out[key] = iso(out[key]);
   }
-  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned']) {
+  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned', 'success']) {
     if (key in out) out[key] = Boolean(out[key]);
   }
   for (const key of ['price', 'amount', 'commission_rate', 'commission_amount', 'net_amount', 'rate']) {
@@ -111,6 +123,9 @@ class DataStore {
   faqItems: FaqItem[] = [];
   supportMessages: SupportMessage[] = [];
   sessions: AccountSession[] = [];
+  apiKeys: ApiKeyRecord[] = [];
+  webhooks: WebhookRecord[] = [];
+  webhookDeliveries: WebhookDelivery[] = [];
   siteSettings: SiteSettings = { ...DEFAULT_SITE_SETTINGS };
   // Kept out of `siteSettings` on purpose: that object is served publicly by
   // GET /api/settings for the homepage CMS content, and backup timing isn't
@@ -193,6 +208,13 @@ class DataStore {
       'SELECT * FROM `sessions` ORDER BY created_at DESC LIMIT 500'
     );
     this.sessions = sessionRows.map((row) => normalizeRow(row as Record<string, any>)) as AccountSession[];
+
+    this.apiKeys = await load<ApiKeyRecord>('api_keys');
+    this.webhooks = await load<WebhookRecord>('webhooks');
+    const [webhookDeliveryRows] = await connection.query<RowDataPacket[]>(
+      'SELECT * FROM `webhook_deliveries` ORDER BY created_at DESC LIMIT 500'
+    );
+    this.webhookDeliveries = webhookDeliveryRows.map((row) => normalizeRow(row as Record<string, any>)) as WebhookDelivery[];
 
     // Ne garder que les événements récents en mémoire : le journal grossit en
     // continu, contrairement aux autres tables qui restent de taille bornée.
@@ -308,6 +330,9 @@ class DataStore {
     this.faqItems = this.makePersistentArray(this.faqItems, 'faq_items');
     this.supportMessages = this.makePersistentArray(this.supportMessages, 'support_messages');
     this.sessions = this.makePersistentArray(this.sessions, 'sessions');
+    this.apiKeys = this.makePersistentArray(this.apiKeys, 'api_keys');
+    this.webhooks = this.makePersistentArray(this.webhooks, 'webhooks');
+    this.webhookDeliveries = this.makePersistentArray(this.webhookDeliveries, 'webhook_deliveries');
 
     const originalSet = this.passwords.set.bind(this.passwords);
     this.passwords.set = ((userId: string, hash: string) => {
@@ -488,6 +513,19 @@ class DataStore {
     await this.pool.execute('DELETE FROM `users` WHERE `id` = ?', [id]);
     this.passwords.delete(id);
     this.users = this.wrapArray(this.users.filter((u) => u.id !== id), 'users');
+  }
+
+  recordWebhookDelivery(entry: { webhookId: string; event: string; statusCode: number | null; success: boolean; errorMessage: string | null }) {
+    this.webhookDeliveries.unshift({
+      id: `whd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      webhook_id: entry.webhookId,
+      event: entry.event,
+      status_code: entry.statusCode,
+      success: entry.success,
+      error_message: entry.errorMessage,
+      created_at: new Date().toISOString(),
+    });
+    if (this.webhookDeliveries.length > 500) this.webhookDeliveries.length = 500;
   }
 
   updateSiteSettings(partial: Partial<SiteSettings>) {

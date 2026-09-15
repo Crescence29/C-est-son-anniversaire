@@ -10,6 +10,7 @@ import {
   Payment,
   PaymentProviderType,
 } from '../../types.ts';
+import { dispatchWebhookEvent } from '../webhooks.ts';
 
 const router = Router();
 
@@ -376,6 +377,14 @@ router.get(
           order.status = 'paid';
           order.updated_at = now;
         }
+
+        dispatchWebhookEvent('payment.succeeded', {
+          order_number: order?.order_number,
+          provider: payment.provider,
+          amount: payment.amount,
+          currency: payment.currency,
+          paid_at: payment.paid_at,
+        });
       }
 
       res.json({ payment });
@@ -524,6 +533,14 @@ router.post(
 
       order.updated_at =
         payment.updated_at;
+
+      dispatchWebhookEvent('payment.succeeded', {
+        order_number: order.order_number,
+        provider: payment.provider,
+        amount: payment.amount,
+        currency: payment.currency,
+        paid_at: payment.paid_at,
+      });
     }
 
     res.json({

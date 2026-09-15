@@ -17,8 +17,34 @@ let requestCount = 0;
 const recentErrors: ErrorEntry[] = [];
 const responseTimings: number[] = [];
 
+interface EndpointCounter {
+  requestCount: number;
+  errorCount: number;
+}
+const endpointCounters = new Map<string, EndpointCounter>();
+
 export function recordRequest(): void {
   requestCount += 1;
+}
+
+// Keyed by "METHOD /pattern" (e.g. "GET /api/orders/:id") rather than the
+// raw URL, so /api/orders/abc123 and /api/orders/xyz789 count as the same
+// endpoint instead of exploding into one row per order id.
+export function recordEndpointHit(method: string, pattern: string, isError: boolean): void {
+  const key = `${method} ${pattern}`;
+  const entry = endpointCounters.get(key) || { requestCount: 0, errorCount: 0 };
+  entry.requestCount += 1;
+  if (isError) entry.errorCount += 1;
+  endpointCounters.set(key, entry);
+}
+
+export function getEndpointStats(): { method: string; path: string; requestCount: number; errorCount: number }[] {
+  return Array.from(endpointCounters.entries())
+    .map(([key, stats]) => {
+      const [method, ...rest] = key.split(' ');
+      return { method, path: rest.join(' '), ...stats };
+    })
+    .sort((a, b) => b.requestCount - a.requestCount);
 }
 
 export function recordTiming(ms: number): void {

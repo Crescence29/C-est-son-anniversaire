@@ -368,3 +368,60 @@ export interface SystemStatus {
   cpuLoadPercent: number | null;
   services: SystemStatusService[];
 }
+
+// ---------------------------------------------------------------------------
+// API management (clés API, webhooks, endpoints) — voir
+// src/server/routes/publicApi.ts et src/server/routes/developer.ts
+// ---------------------------------------------------------------------------
+
+export const API_SCOPES = ['catalog:read', 'orders:read'] as const;
+export type ApiScope = (typeof API_SCOPES)[number];
+
+export interface ApiKeySummary {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: ApiScope[];
+  status: 'active' | 'revoked';
+  last_used_at: string | null;
+  request_count: number;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export const WEBHOOK_EVENTS = ['order.created', 'order.delivered', 'payment.succeeded'] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+export interface WebhookSummary {
+  id: string;
+  url: string;
+  event: WebhookEvent;
+  status: 'active' | 'disabled';
+  last_triggered_at: string | null;
+  last_status_code: number | null;
+  created_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  status_code: number | null;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface EndpointStat {
+  method: string;
+  path: string;
+  requestCount: number;
+  errorCount: number;
+  state: ServiceHealthState;
+}
+
+export interface ExternalServiceStatus {
+  name: string;
+  configured: boolean;
+  detail: string;
+}

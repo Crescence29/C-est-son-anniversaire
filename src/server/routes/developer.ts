@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Response, Express } from 'express';
 import bcrypt from 'bcryptjs';
 import os from 'os';
 import fs from 'fs';
@@ -6,11 +6,21 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
-import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole } from '../../types.ts';
-import { getMetricsSnapshot } from '../metrics.ts';
+import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole, ApiScope, API_SCOPES, WebhookEvent, WEBHOOK_EVENTS } from '../../types.ts';
+import { getMetricsSnapshot, getEndpointStats } from '../metrics.ts';
 import { describeDevice } from '../utils/userAgent.ts';
+import { generateApiKey } from '../apiKeys.ts';
+import { listEndpoints } from '../endpointRegistry.ts';
+import crypto from 'crypto';
 
 const router = Router();
+
+// Set once from server.ts after the Express app is created — used only by
+// GET /endpoints to introspect the app's real, registered routes.
+let expressAppRef: Express | null = null;
+export function setExpressApp(app: Express): void {
+  expressAppRef = app;
+}
 
 // Everything in this file is gated on the 'developer' role alone — never
 // 'admin'. This is the whole point of splitting the role in migration 009:
@@ -618,6 +628,208 @@ router.put('/logo', (req: AuthRequest, res: Response): void => {
   });
 
   res.json({ message: 'Logo mis à jour.', settings: db.siteSettings });
+});
+
+// ---------------------------------------------------------------------------
+// Gestion de l'API : endpoints réels + trafic en direct, clés API pour un
+// accès externe, webhooks sortants, état des services externes.
+// ---------------------------------------------------------------------------
+
+// GET /api/developer/endpoints — la liste réelle des routes enregistrées
+// dans Express, avec leur trafic et leur taux d'erreur en direct depuis le
+// dernier redémarrage. Rien n'est écrit à la main ici : c'est une
+// introspection de l'application elle-même.
+router.get('/endpoints', (req: AuthRequest, res: Response): void => {
+  const registry = expressAppRef ? listEndpoints(expressAppRef) : [];
+  const stats = new Map(getEndpointStats().map((s) => [`${s.method} ${s.path}`, s]));
+
+  const endpoints = registry.map(({ method, path: p }) => {
+    const stat = stats.get(`${method} ${p}`);
+    const requestCount = stat?.requestCount || 0;
+    const errorCount = stat?.errorCount || 0;
+    const errorRate = requestCount > 0 ? errorCount / requestCount : 0;
+    const state: ServiceHealthState = requestCount === 0 ? 'unknown' : errorRate >= 0.1 ? 'degraded' : 'ok';
+    return { method, path: p, requestCount, errorCount, state };
+  });
+
+  res.json({ endpoints });
+});
+
+// GET /api/developer/external-services — état réel de configuration (pas
+// de test d'appel réseau) des intégrations externes connues de l'app.
+router.get('/external-services', (req: AuthRequest, res: Response): void => {
+  const services = [
+    { name: 'MTN Mobile Money', configured: Boolean(process.env.MTN_API_KEY), detail: process.env.MTN_API_KEY ? 'Clé configurée' : 'Non configuré (mode démo)' },
+    { name: 'Orange Money', configured: Boolean(process.env.ORANGE_API_KEY), detail: process.env.ORANGE_API_KEY ? 'Clé configurée' : 'Non configuré (mode démo)' },
+    { name: 'Moov Money', configured: Boolean(process.env.MOOV_API_KEY), detail: process.env.MOOV_API_KEY ? 'Clé configurée' : 'Non configuré (mode démo)' },
+    { name: 'CinetPay', configured: Boolean(process.env.CINETPAY_API_KEY), detail: process.env.CINETPAY_API_KEY ? 'Clé configurée' : 'Non configuré (mode démo)' },
+    { name: 'Base de données MySQL', configured: true, detail: `${process.env.DB_HOST || '127.0.0.1'}` },
+  ];
+  res.json({ services });
+});
+
+// GET /api/developer/api-keys
+router.get('/api-keys', (req: AuthRequest, res: Response): void => {
+  const keys = db.apiKeys.map(({ key_hash, ...rest }) => rest);
+  res.json({ apiKeys: keys });
+});
+
+// POST /api/developer/api-keys — la clé en clair n'est renvoyée qu'une
+// fois, à la création ; seul son hash est conservé ensuite.
+router.post('/api-keys', (req: AuthRequest, res: Response): void => {
+  const { name, scopes } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Un nom est requis pour identifier la clé.' });
+    return;
+  }
+  if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every((s) => (API_SCOPES as readonly string[]).includes(s))) {
+    res.status(400).json({ error: `Au moins une portée valide est requise (${API_SCOPES.join(', ')}).` });
+    return;
+  }
+
+  const { fullKey, prefix, hash } = generateApiKey();
+  const id = `key-${Date.now()}`;
+
+  db.apiKeys.push({
+    id,
+    name: name.trim(),
+    key_prefix: prefix,
+    key_hash: hash,
+    scopes: scopes as ApiScope[],
+    status: 'active',
+    created_by: req.user?.id,
+    last_used_at: null,
+    request_count: 0,
+    created_at: new Date().toISOString(),
+    revoked_at: null,
+  } as any);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'api_key_created',
+    details: `Clé API "${name}" créée (portées : ${scopes.join(', ')}).`,
+    ip_address: req.ip,
+  });
+
+  res.status(201).json({ message: 'Clé API créée. Elle ne sera plus affichée en clair.', fullKey, apiKey: { id, name, key_prefix: prefix, scopes, status: 'active' } });
+});
+
+// DELETE /api/developer/api-keys/:id — révocation (pas de suppression :
+// on garde la trace de son existence et de son usage passé).
+router.delete('/api-keys/:id', (req: AuthRequest, res: Response): void => {
+  const key = db.apiKeys.find((k) => k.id === req.params.id);
+  if (!key) {
+    res.status(404).json({ error: 'Clé API introuvable.' });
+    return;
+  }
+
+  key.status = 'revoked';
+  key.revoked_at = new Date().toISOString();
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'api_key_revoked',
+    details: `Clé API "${key.name}" révoquée.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: `Clé "${key.name}" révoquée.` });
+});
+
+// GET /api/developer/webhooks
+router.get('/webhooks', (req: AuthRequest, res: Response): void => {
+  const webhooks = db.webhooks.map(({ secret, ...rest }) => rest);
+  res.json({ webhooks });
+});
+
+// POST /api/developer/webhooks
+router.post('/webhooks', (req: AuthRequest, res: Response): void => {
+  const { url, event } = req.body;
+
+  if (!url || typeof url !== 'string' || !/^https?:\/\//.test(url)) {
+    res.status(400).json({ error: 'URL de webhook invalide (doit commencer par http:// ou https://).' });
+    return;
+  }
+  if (!WEBHOOK_EVENTS.includes(event)) {
+    res.status(400).json({ error: `Événement invalide (attendu : ${WEBHOOK_EVENTS.join(', ')}).` });
+    return;
+  }
+
+  const id = `wh-${Date.now()}`;
+  const secret = crypto.randomBytes(20).toString('hex');
+
+  db.webhooks.push({
+    id,
+    url,
+    event: event as WebhookEvent,
+    secret,
+    status: 'active',
+    created_by: req.user?.id,
+    last_triggered_at: null,
+    last_status_code: null,
+    created_at: new Date().toISOString(),
+  } as any);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'webhook_created',
+    details: `Webhook créé pour l'événement "${event}" → ${url}.`,
+    ip_address: req.ip,
+  });
+
+  res.status(201).json({ message: 'Webhook créé.', secret, webhook: { id, url, event, status: 'active' } });
+});
+
+// PUT /api/developer/webhooks/:id/status — activer / désactiver
+router.put('/webhooks/:id/status', (req: AuthRequest, res: Response): void => {
+  const webhook = db.webhooks.find((w) => w.id === req.params.id);
+  if (!webhook) {
+    res.status(404).json({ error: 'Webhook introuvable.' });
+    return;
+  }
+  const { status } = req.body;
+  if (!['active', 'disabled'].includes(status)) {
+    res.status(400).json({ error: 'Statut invalide.' });
+    return;
+  }
+  webhook.status = status;
+  res.json({ message: `Webhook ${status === 'active' ? 'activé' : 'désactivé'}.` });
+});
+
+// DELETE /api/developer/webhooks/:id
+router.delete('/webhooks/:id', (req: AuthRequest, res: Response): void => {
+  const index = db.webhooks.findIndex((w) => w.id === req.params.id);
+  if (index === -1) {
+    res.status(404).json({ error: 'Webhook introuvable.' });
+    return;
+  }
+  const [removed] = db.webhooks.splice(index, 1);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'webhook_deleted',
+    details: `Webhook pour "${removed.event}" (${removed.url}) supprimé.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: 'Webhook supprimé.' });
+});
+
+// GET /api/developer/webhooks/:id/deliveries
+router.get('/webhooks/:id/deliveries', (req: AuthRequest, res: Response): void => {
+  const deliveries = db.webhookDeliveries
+    .filter((d) => d.webhook_id === req.params.id)
+    .slice(0, 20);
+  res.json({ deliveries });
 });
 
 export default router;

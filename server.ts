@@ -16,12 +16,13 @@ import notificationsRouter from './src/server/routes/notifications.ts';
 import videosRouter from './src/server/routes/videos.ts';
 import staffRouter from './src/server/routes/staff.ts';
 import adminRouter from './src/server/routes/admin.ts';
-import developerRouter from './src/server/routes/developer.ts';
+import developerRouter, { setExpressApp } from './src/server/routes/developer.ts';
+import publicApiRouter from './src/server/routes/publicApi.ts';
 import settingsRouter from './src/server/routes/settings.ts';
 import faqRouter from './src/server/routes/faq.ts';
 import supportRouter from './src/server/routes/support.ts';
 import { db } from './src/server/dataStore.ts';
-import { recordRequest, recordTiming, recordError } from './src/server/metrics.ts';
+import { recordRequest, recordTiming, recordError, recordEndpointHit } from './src/server/metrics.ts';
 
 async function startServer() {
   const app = express();
@@ -60,7 +61,17 @@ async function startServer() {
   app.use((req, res, next) => {
     recordRequest();
     const startedAt = Date.now();
-    res.on('finish', () => recordTiming(Date.now() - startedAt));
+    res.on('finish', () => {
+      recordTiming(Date.now() - startedAt);
+      // req.route/req.baseUrl are only populated once Express has matched a
+      // specific route handler, which has already happened by the time
+      // 'finish' fires — this groups /api/orders/abc123 and .../xyz789
+      // under the same "/api/orders/:id" endpoint instead of one row each.
+      if (req.originalUrl.startsWith('/api/')) {
+        const pattern = req.route ? `${req.baseUrl}${req.route.path}`.replace(/\/{2,}/g, '/') : req.path;
+        recordEndpointHit(req.method, pattern, res.statusCode >= 400);
+      }
+    });
     next();
   });
 
@@ -105,6 +116,11 @@ async function startServer() {
   app.use('/api/staff', staffRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/developer', developerRouter);
+  app.use('/api/v1', publicApiRouter);
+
+  // Needs every router already mounted above so the introspection in
+  // GET /api/developer/endpoints sees the real, complete route table.
+  setExpressApp(app);
   app.use('/api/settings', settingsRouter);
   app.use('/api/faq', faqRouter);
   app.use('/api/support-messages', supportRouter);

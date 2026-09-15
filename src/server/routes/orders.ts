@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest } from '../middleware/auth.ts';
 import { Order, OrderStatus } from '../../types.ts';
+import { dispatchWebhookEvent } from '../webhooks.ts';
 
 const router = Router();
 
@@ -80,6 +81,14 @@ router.post('/', authenticateToken, (req: AuthRequest, res: Response): void => {
       is_read: false,
       link_url: `/payment/${newOrder.id}`,
       created_at: new Date().toISOString(),
+    });
+
+    dispatchWebhookEvent('order.created', {
+      order_number: newOrder.order_number,
+      service_name: newOrder.service_name,
+      amount: newOrder.amount,
+      currency: newOrder.currency,
+      status: newOrder.status,
     });
 
     res.status(201).json({

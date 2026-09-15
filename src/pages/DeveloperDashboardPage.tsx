@@ -3,6 +3,7 @@ import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
+  Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -10,7 +11,10 @@ import { AppLogo, refreshAppLogo } from '../components/AppLogo.tsx';
 import { DevSidebar, DevNavGroup } from '../components/dev-dashboard/DevSidebar.tsx';
 import { DevTopbar } from '../components/dev-dashboard/DevTopbar.tsx';
 import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel.tsx';
-import { ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole } from '../types.ts';
+import {
+  ACCOUNT_PERMISSION_KEYS, AccountPermission, AccountSession, ActivityLog, AdminLevel, SiteSettings, UserRole,
+  ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
+} from '../types.ts';
 
 type InternalAccount = {
   id: string;
@@ -42,6 +46,13 @@ const PERMISSION_LABEL: Record<AccountPermission, string> = {
   'settings.manage': 'Gérer les réglages du site',
   'reviews.moderate': 'Modérer les avis',
   'support.respond': 'Répondre au support',
+};
+
+const STATE_META: Record<string, { label: string; dot: string; text: string }> = {
+  ok: { label: 'Opérationnel', dot: 'bg-emerald-400', text: 'text-emerald-400' },
+  degraded: { label: 'Dégradé', dot: 'bg-amber-400', text: 'text-amber-400' },
+  down: { label: 'En panne', dot: 'bg-red-400', text: 'text-red-400' },
+  unknown: { label: 'Sans trafic', dot: 'bg-white/25', text: 'text-white/45' },
 };
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -86,7 +97,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -286,11 +297,124 @@ export const DeveloperDashboardPage: React.FC = () => {
     }
   };
 
+  // ---- Gestion de l'API ----
+  const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
+  const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKeySummary[]>([]);
+  const [webhooks, setWebhooks] = useState<WebhookSummary[]>([]);
+  const [newApiKeyResult, setNewApiKeyResult] = useState<{ name: string; fullKey: string } | null>(null);
+  const [newWebhookSecret, setNewWebhookSecret] = useState<{ url: string; secret: string } | null>(null);
+  const [showCreateKey, setShowCreateKey] = useState(false);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState<ApiScope[]>([]);
+  const [showCreateWebhook, setShowCreateWebhook] = useState(false);
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [newWebhookEvent, setNewWebhookEvent] = useState<WebhookEvent>(WEBHOOK_EVENTS[0]);
+  const [deliveriesFor, setDeliveriesFor] = useState<WebhookSummary | null>(null);
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
+  const [apiError, setApiError] = useState('');
+
+  const fetchApiData = async () => {
+    try {
+      const [endpointsRes, servicesRes, keysRes, webhooksRes] = await Promise.all([
+        api.get<{ endpoints: EndpointStat[] }>('/developer/endpoints'),
+        api.get<{ services: ExternalServiceStatus[] }>('/developer/external-services'),
+        api.get<{ apiKeys: ApiKeySummary[] }>('/developer/api-keys'),
+        api.get<{ webhooks: WebhookSummary[] }>('/developer/webhooks'),
+      ]);
+      setEndpoints(endpointsRes.endpoints || []);
+      setExternalServices(servicesRes.services || []);
+      setApiKeys(keysRes.apiKeys || []);
+      setWebhooks(webhooksRes.webhooks || []);
+    } catch {
+      // silencieux : section secondaire, ne bloque pas le reste du dashboard
+    }
+  };
+
+  useEffect(() => {
+    fetchApiData();
+    const interval = setInterval(fetchApiData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleCreateApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApiError('');
+    if (!newKeyName.trim() || newKeyScopes.length === 0) {
+      setApiError('Un nom et au moins une portée sont requis.');
+      return;
+    }
+    try {
+      const res = await api.post<{ fullKey: string }>('/developer/api-keys', { name: newKeyName, scopes: newKeyScopes });
+      setNewApiKeyResult({ name: newKeyName, fullKey: res.fullKey });
+      setShowCreateKey(false);
+      setNewKeyName('');
+      setNewKeyScopes([]);
+      fetchApiData();
+    } catch (err: any) {
+      setApiError(err?.message || 'Erreur lors de la création de la clé.');
+    }
+  };
+
+  const handleRevokeApiKey = async (key: ApiKeySummary) => {
+    if (!window.confirm(`Révoquer la clé "${key.name}" ? Toute intégration qui l'utilise cessera de fonctionner immédiatement.`)) return;
+    try {
+      await api.delete(`/developer/api-keys/${key.id}`);
+      fetchApiData();
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la révocation.');
+    }
+  };
+
+  const handleCreateWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApiError('');
+    try {
+      const res = await api.post<{ secret: string }>('/developer/webhooks', { url: newWebhookUrl, event: newWebhookEvent });
+      setNewWebhookSecret({ url: newWebhookUrl, secret: res.secret });
+      setShowCreateWebhook(false);
+      setNewWebhookUrl('');
+      fetchApiData();
+    } catch (err: any) {
+      setApiError(err?.message || 'Erreur lors de la création du webhook.');
+    }
+  };
+
+  const handleToggleWebhook = async (webhook: WebhookSummary) => {
+    try {
+      await api.put(`/developer/webhooks/${webhook.id}/status`, { status: webhook.status === 'active' ? 'disabled' : 'active' });
+      fetchApiData();
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors du changement de statut.');
+    }
+  };
+
+  const handleDeleteWebhook = async (webhook: WebhookSummary) => {
+    if (!window.confirm(`Supprimer ce webhook (${webhook.url}) ?`)) return;
+    try {
+      await api.delete(`/developer/webhooks/${webhook.id}`);
+      fetchApiData();
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la suppression.');
+    }
+  };
+
+  const openDeliveries = async (webhook: WebhookSummary) => {
+    setDeliveriesFor(webhook);
+    try {
+      const res = await api.get<{ deliveries: WebhookDelivery[] }>(`/developer/webhooks/${webhook.id}/deliveries`);
+      setDeliveries(res.deliveries || []);
+    } catch {
+      setDeliveries([]);
+    }
+  };
+
   const navGroups: DevNavGroup[] = [
     {
       title: 'Technique',
       items: [
         { key: 'system', label: 'État système', icon: Gauge },
+        { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
     },
@@ -302,6 +426,7 @@ export const DeveloperDashboardPage: React.FC = () => {
 
   const TAB_TITLES: Record<typeof activeTab, { title: string; subtitle: string }> = {
     system: { title: 'État système', subtitle: 'Santé technique de la plateforme — aucune donnée client ici' },
+    api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
   };
@@ -385,6 +510,191 @@ export const DeveloperDashboardPage: React.FC = () => {
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'api' && (
+            <div className="space-y-6">
+              {apiError && (
+                <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold">{apiError}</div>
+              )}
+
+              {/* Endpoints réels + trafic en direct */}
+              <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <div className="p-5 pb-0 flex items-center justify-between">
+                  <h3 className="font-serif font-bold text-base flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                    <Code2 className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                    Endpoints ({endpoints.length})
+                  </h3>
+                  <span className="text-[10px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>Depuis le dernier déploiement</span>
+                </div>
+                <div className="overflow-x-auto p-5">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b" style={{ borderColor: 'var(--dd-border)' }}>
+                        {['Endpoint', 'Requêtes', 'Erreurs', 'Statut'].map((h) => (
+                          <th key={h} className="text-left font-mono uppercase text-[10px] px-3 py-2" style={{ color: 'var(--dd-ink-faint)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {endpoints.length === 0 ? (
+                        <tr><td colSpan={4} className="text-center py-8" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</td></tr>
+                      ) : (
+                        endpoints.map((ep) => {
+                          const meta = STATE_META[ep.state];
+                          return (
+                            <tr key={`${ep.method} ${ep.path}`} className="border-b last:border-0" style={{ borderColor: 'var(--dd-border)' }}>
+                              <td className="px-3 py-2 font-mono">
+                                <span className="font-bold mr-2" style={{ color: 'var(--dd-accent)' }}>{ep.method}</span>
+                                <span style={{ color: 'var(--dd-ink)' }}>{ep.path}</span>
+                              </td>
+                              <td className="px-3 py-2 font-mono" style={{ color: 'var(--dd-ink-soft)' }}>{ep.requestCount.toLocaleString('fr-FR')}</td>
+                              <td className="px-3 py-2 font-mono" style={{ color: ep.errorCount > 0 ? '#f43f5e' : 'var(--dd-ink-soft)' }}>{ep.errorCount.toLocaleString('fr-FR')}</td>
+                              <td className="px-3 py-2">
+                                <span className={`flex items-center gap-1.5 text-[11px] font-mono font-bold ${meta.text}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                                  {meta.label}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Clés API */}
+                <div className="rounded-2xl p-5 border space-y-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-sm flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                      <Key className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                      Clés API
+                    </h3>
+                    <button onClick={() => setShowCreateKey(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold" style={{ background: 'var(--dd-accent)', color: '#1a0a0d' }}>
+                      <Plus className="w-3.5 h-3.5" />
+                      Nouvelle clé
+                    </button>
+                  </div>
+
+                  {newApiKeyResult && (
+                    <div className="p-3 rounded-xl border space-y-1.5" style={{ background: 'var(--dd-accent-soft)', borderColor: 'var(--dd-accent)' }}>
+                      <p className="text-[11px] font-bold" style={{ color: 'var(--dd-accent)' }}>Clé pour « {newApiKeyResult.name} » — copiez-la, elle ne sera plus affichée :</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-[11px] font-mono px-2 py-1 rounded flex-1 truncate" style={{ background: 'var(--dd-panel)', color: 'var(--dd-ink)' }}>{newApiKeyResult.fullKey}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(newApiKeyResult.fullKey); }} title="Copier" style={{ color: 'var(--dd-accent)' }}><Copy className="w-4 h-4" /></button>
+                        <button onClick={() => setNewApiKeyResult(null)} style={{ color: 'var(--dd-ink-soft)' }}><X className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  )}
+
+                  {apiKeys.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucune clé API créée.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {apiKeys.map((k) => (
+                        <div key={k.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate" style={{ color: 'var(--dd-ink)' }}>{k.name}</p>
+                            <p className="font-mono text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>{k.key_prefix} · {k.scopes.join(', ')} · {k.request_count} appels</p>
+                          </div>
+                          {k.status === 'active' ? (
+                            <button onClick={() => handleRevokeApiKey(k)} title="Révoquer" className="p-1.5 rounded-lg shrink-0" style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e' }}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-bold shrink-0" style={{ color: '#f43f5e' }}>Révoquée</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Webhooks */}
+                <div className="rounded-2xl p-5 border space-y-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-sm flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                      <WebhookIcon className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                      Webhooks
+                    </h3>
+                    <button onClick={() => setShowCreateWebhook(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold" style={{ background: 'var(--dd-accent)', color: '#1a0a0d' }}>
+                      <Plus className="w-3.5 h-3.5" />
+                      Nouveau
+                    </button>
+                  </div>
+
+                  {newWebhookSecret && (
+                    <div className="p-3 rounded-xl border space-y-1.5" style={{ background: 'var(--dd-accent-soft)', borderColor: 'var(--dd-accent)' }}>
+                      <p className="text-[11px] font-bold" style={{ color: 'var(--dd-accent)' }}>Secret de signature pour {newWebhookSecret.url} — à conserver pour vérifier les envois :</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-[11px] font-mono px-2 py-1 rounded flex-1 truncate" style={{ background: 'var(--dd-panel)', color: 'var(--dd-ink)' }}>{newWebhookSecret.secret}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(newWebhookSecret.secret); }} title="Copier" style={{ color: 'var(--dd-accent)' }}><Copy className="w-4 h-4" /></button>
+                        <button onClick={() => setNewWebhookSecret(null)} style={{ color: 'var(--dd-ink-soft)' }}><X className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  )}
+
+                  {webhooks.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucun webhook configuré.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {webhooks.map((w) => (
+                        <div key={w.id} className="flex items-center justify-between gap-2 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                          <button onClick={() => openDeliveries(w)} className="min-w-0 text-left">
+                            <p className="font-semibold truncate" style={{ color: 'var(--dd-ink)' }}>{w.event}</p>
+                            <p className="font-mono text-[10px] truncate" style={{ color: 'var(--dd-ink-faint)' }}>{w.url}</p>
+                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] font-bold" style={{ color: w.status === 'active' ? '#34d399' : 'var(--dd-ink-faint)' }}>{w.status === 'active' ? 'Actif' : 'Désactivé'}</span>
+                            <button onClick={() => handleToggleWebhook(w)} title={w.status === 'active' ? 'Désactiver' : 'Activer'} className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDeleteWebhook(w)} title="Supprimer" className="p-1.5 rounded-lg" style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e' }}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Services externes */}
+              <div className="rounded-2xl p-5 border space-y-3" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-sm flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                  <Globe className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                  Services externes
+                </h3>
+                <div className="space-y-2">
+                  {externalServices.map((s) => (
+                    <div key={s.name} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--dd-border)' }}>
+                      <span className="text-xs" style={{ color: 'var(--dd-ink-soft)' }}>{s.name}</span>
+                      <span className={`flex items-center gap-1.5 text-[11px] font-mono font-bold ${s.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.configured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                        {s.detail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Documentation API minimale, générée depuis les vraies routes */}
+              <div className="rounded-2xl p-5 border space-y-2" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-sm" style={{ color: 'var(--dd-ink)' }}>Documentation — API publique v1</h3>
+                <p className="text-xs" style={{ color: 'var(--dd-ink-soft)' }}>
+                  Base : <code className="font-mono">/api/v1</code> · Authentification : en-tête <code className="font-mono">X-API-Key</code> · Limite : 120 requêtes/minute par clé
+                </p>
+                <div className="font-mono text-xs space-y-1 pt-1" style={{ color: 'var(--dd-ink-faint)' }}>
+                  <p>GET /api/v1/categories <span style={{ color: 'var(--dd-ink-soft)' }}>— portée catalog:read</span></p>
+                  <p>GET /api/v1/services <span style={{ color: 'var(--dd-ink-soft)' }}>— portée catalog:read</span></p>
+                  <p>GET /api/v1/orders/{'{order_number}'} <span style={{ color: 'var(--dd-ink-soft)' }}>— portée orders:read</span></p>
+                </div>
               </div>
             </div>
           )}
@@ -707,6 +1017,113 @@ export const DeveloperDashboardPage: React.FC = () => {
             <p className="text-[10px] pt-2" style={{ color: 'var(--dd-ink-faint)' }}>
               Ces permissions sont enregistrées sur le compte ; leur application dans le reste de l’application est en cours de déploiement (voir rapport.md).
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Modale : créer une clé API */}
+      {showCreateKey && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowCreateKey(false)}>
+          <form
+            onSubmit={handleCreateApiKey}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border p-5 space-y-3"
+            style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>Nouvelle clé API</h3>
+              <button type="button" onClick={() => setShowCreateKey(false)} style={{ color: 'var(--dd-ink-soft)' }}><X className="w-4.5 h-4.5" /></button>
+            </div>
+            <input
+              type="text"
+              required
+              placeholder="Nom (ex : Application partenaire X)"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              className="w-full p-2.5 rounded-xl text-xs"
+              style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+            />
+            <div className="space-y-1.5">
+              {API_SCOPES.map((scope) => (
+                <label key={scope} className="flex items-center gap-2.5 text-xs cursor-pointer" style={{ color: 'var(--dd-ink)' }}>
+                  <input
+                    type="checkbox"
+                    checked={newKeyScopes.includes(scope)}
+                    onChange={() => setNewKeyScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]))}
+                  />
+                  {scope}
+                </label>
+              ))}
+            </div>
+            <button type="submit" className="w-full btn-festive text-xs py-2.5">Créer la clé</button>
+          </form>
+        </div>
+      )}
+
+      {/* Modale : créer un webhook */}
+      {showCreateWebhook && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowCreateWebhook(false)}>
+          <form
+            onSubmit={handleCreateWebhook}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border p-5 space-y-3"
+            style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>Nouveau webhook</h3>
+              <button type="button" onClick={() => setShowCreateWebhook(false)} style={{ color: 'var(--dd-ink-soft)' }}><X className="w-4.5 h-4.5" /></button>
+            </div>
+            <input
+              type="url"
+              required
+              placeholder="https://exemple.com/webhooks/csa"
+              value={newWebhookUrl}
+              onChange={(e) => setNewWebhookUrl(e.target.value)}
+              className="w-full p-2.5 rounded-xl text-xs"
+              style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+            />
+            <select
+              value={newWebhookEvent}
+              onChange={(e) => setNewWebhookEvent(e.target.value as WebhookEvent)}
+              className="w-full p-2.5 rounded-xl text-xs"
+              style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+            >
+              {WEBHOOK_EVENTS.map((ev) => (
+                <option key={ev} value={ev}>{ev}</option>
+              ))}
+            </select>
+            <button type="submit" className="w-full btn-festive text-xs py-2.5">Créer le webhook</button>
+          </form>
+        </div>
+      )}
+
+      {/* Modale : historique des envois d'un webhook */}
+      {deliveriesFor && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setDeliveriesFor(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border p-5 space-y-3 max-h-[80vh] overflow-y-auto"
+            style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>Envois — {deliveriesFor.event}</h3>
+              <button onClick={() => setDeliveriesFor(null)} style={{ color: 'var(--dd-ink-soft)' }}><X className="w-4.5 h-4.5" /></button>
+            </div>
+            <p className="text-[10px] font-mono truncate" style={{ color: 'var(--dd-ink-faint)' }}>{deliveriesFor.url}</p>
+            {deliveries.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucun envoi pour le moment.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {deliveries.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 py-2 border-b last:border-0 text-xs" style={{ borderColor: 'var(--dd-border)' }}>
+                    <span className={`font-mono font-bold ${d.success ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {d.success ? `${d.status_code} OK` : d.error_message || 'Échec'}
+                    </span>
+                    <span className="text-[10px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{new Date(d.created_at).toLocaleString('fr-FR')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

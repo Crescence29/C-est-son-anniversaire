@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.ts';
 import { OrderStatus, OrderDeliverable, Category, Service, FaqItem } from '../../types.ts';
+import { dispatchWebhookEvent } from '../webhooks.ts';
 
 const router = Router();
 
@@ -65,6 +66,11 @@ router.put('/orders/:id/status', (req: AuthRequest, res: Response): void => {
 
   if (nextStatus === 'delivered') {
     order.delivered_at = new Date().toISOString();
+    dispatchWebhookEvent('order.delivered', {
+      order_number: order.order_number,
+      service_name: order.service_name,
+      delivered_at: order.delivered_at,
+    });
   }
 
   // Send notification to the client
