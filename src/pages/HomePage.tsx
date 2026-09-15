@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   hero_title_line2: 'C’EST SON ANNIVERSAIRE',
   hero_subtitle: 'Moment de détente',
   hero_images: ['/HDB1.jpg', '/HBD2.jpg', '/HBD3.jpg', '/HBD4.jpg'],
+  hero_video_url: '',
   hero_cta_primary_label: 'Découvrir les prestations',
   hero_cta_secondary_label: 'Voir les réactions en direct',
   trust_rating_value: '4.0 / 5',
@@ -245,16 +246,28 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
     <div className="space-y-16 sm:space-y-24 pb-28 md:pb-12">
       {/* 1. HERO SECTION */}
       <section className="relative isolate pt-6 sm:pt-12 overflow-hidden min-h-[520px] sm:min-h-[600px] flex items-center">
-        {/* Animated photo background (Ken Burns crossfade) */}
+        {/* Fond animé : vidéo si fournie, sinon diaporama photo (Ken Burns) */}
         <div className="absolute inset-0 -z-30 rounded-b-[2.5rem] overflow-hidden">
-          {settings.hero_images.map((src, idx) => (
-            <div
-              key={src}
-              className={`hero-slide ${idx === heroSlide ? 'is-active' : ''}`}
-              style={{ backgroundImage: `url(${src})` }}
+          {settings.hero_video_url ? (
+            <video
+              key={settings.hero_video_url}
+              className="absolute inset-0 w-full h-full object-cover"
+              src={settings.hero_video_url}
+              autoPlay
+              muted
+              loop
+              playsInline
             />
-          ))}
-          {/* Scrim so the hero text stays legible over the photos, without hiding them */}
+          ) : (
+            settings.hero_images.map((src, idx) => (
+              <div
+                key={src}
+                className={`hero-slide ${idx === heroSlide ? 'is-active' : ''}`}
+                style={{ backgroundImage: `url(${src})` }}
+              />
+            ))
+          )}
+          {/* Scrim so the hero text stays legible over the photos/video, without hiding them */}
           <div className="absolute inset-0 bg-gradient-to-b from-fond/25 via-fond/45 to-fond/85" />
         </div>
 

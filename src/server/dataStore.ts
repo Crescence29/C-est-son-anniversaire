@@ -17,6 +17,7 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   hero_title_line2: 'C’EST SON ANNIVERSAIRE',
   hero_subtitle: 'Moment de détente',
   hero_images: ['/HDB1.jpg', '/HBD2.jpg', '/HBD3.jpg', '/HBD4.jpg'],
+  hero_video_url: '',
   hero_cta_primary_label: 'Découvrir les prestations',
   hero_cta_secondary_label: 'Voir les réactions en direct',
   trust_rating_value: '4.0 / 5',

@@ -62,6 +62,7 @@ export interface SiteSettings {
   hero_title_line2: string;
   hero_subtitle: string;
   hero_images: string[];
+  hero_video_url: string;
   hero_cta_primary_label: string;
   hero_cta_secondary_label: string;
   trust_rating_value: string;

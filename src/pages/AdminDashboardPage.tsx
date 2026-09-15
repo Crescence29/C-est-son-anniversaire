@@ -1206,7 +1206,18 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-ink/70">Images du carrousel (4 max, URL)</label>
+              <label className="text-xs font-semibold text-ink/70">Vidéo de fond (URL ou /fichier.mp4 — remplace les images ci-dessous si renseignée)</label>
+              <input
+                type="text"
+                value={settings.hero_video_url}
+                onChange={(e) => handleSettingsField('hero_video_url', e.target.value)}
+                placeholder="/hero.mp4"
+                className="w-full p-2.5 rounded-xl bg-white/80 dark:bg-white/10 border border-black/10 dark:border-white/10 text-xs font-mono text-ink"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-ink/70">Images du carrousel (4 max, URL — utilisées seulement si aucune vidéo n'est renseignée)</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[0, 1, 2, 3].map((idx) => (
                   <input
