@@ -3,6 +3,7 @@ import { Order, Favorite } from '../types.ts';
 import { api } from '../utils/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { StatusBadge } from '../components/StatusBadge.tsx';
+import { resizeImageFile } from '../utils/imageResize.ts';
 import {
   ShoppingBag,
   Heart,
@@ -36,8 +37,35 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
   const [editName, setEditName] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
+
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProfileError('Le fichier choisi n’est pas une image.');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setProfileError('Photo trop volumineuse (15 Mo maximum).');
+      return;
+    }
+
+    setProfileError('');
+    setIsProcessingPhoto(true);
+    try {
+      const dataUrl = await resizeImageFile(file);
+      setEditAvatarUrl(dataUrl);
+    } catch (err: any) {
+      setProfileError(err?.message || 'Impossible de traiter cette photo.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  };
 
   useEffect(() => {
     setEditName(user?.full_name || '');
@@ -281,23 +309,42 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
             )}
 
             <div className="flex items-center gap-4">
-              <img
-                src={editAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(editName || 'U')}&backgroundColor=d94a76,4a2170`}
-                alt="Aperçu de la photo de profil"
-                className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md shrink-0"
-              />
+              <div className="relative shrink-0">
+                <img
+                  src={editAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(editName || 'U')}&backgroundColor=d94a76,4a2170`}
+                  alt="Aperçu de la photo de profil"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md"
+                />
+                {isProcessingPhoto && (
+                  <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
               <div className="flex-1 space-y-1.5">
                 <label className="text-xs font-medium text-ink flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5 text-violet" />
-                  Photo de profil (URL de l'image)
+                  Photo de profil
                 </label>
-                <input
-                  type="text"
-                  value={editAvatarUrl}
-                  onChange={(e) => setEditAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full p-2.5 rounded-xl bg-white/80 dark:bg-white/10 border border-black/10 dark:border-white/10 text-xs font-mono text-ink"
-                />
+                <div className="flex flex-wrap gap-2">
+                  <label className="cursor-pointer text-xs font-semibold px-3 py-2 rounded-xl bg-violet/10 text-violet hover:bg-violet/20 transition-colors">
+                    Importer une photo
+                    <input type="file" accept="image/*" onChange={handlePhotoFileChange} className="hidden" />
+                  </label>
+                  <label className="cursor-pointer text-xs font-semibold px-3 py-2 rounded-xl bg-violet/10 text-violet hover:bg-violet/20 transition-colors">
+                    Prendre une photo
+                    <input type="file" accept="image/*" capture="user" onChange={handlePhotoFileChange} className="hidden" />
+                  </label>
+                  {editAvatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditAvatarUrl('')}
+                      className="text-xs font-semibold px-3 py-2 rounded-xl bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
+                    >
+                      Retirer
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

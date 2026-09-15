@@ -55,7 +55,10 @@ async function startServer() {
         : undefined
     )
   );
-  app.use(express.json());
+  // Relevé au-delà de la limite par défaut (100kb) pour laisser passer une
+  // photo de profil importée/prise par l'utilisateur, redimensionnée et
+  // encodée en base64 côté navigateur avant envoi.
+  app.use(express.json({ limit: '2mb' }));
 
   // Metrics for the developer system-status panel: request volume, response
   // time, and any request that ends in a 5xx (recorded from the body's
