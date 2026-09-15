@@ -98,7 +98,7 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await api.get<{ status: SystemStatus }>('/admin/system-status');
+      const res = await api.get<{ status: SystemStatus }>('/developer/system-status');
       setStatus(res.status);
       setLoadFailed(false);
       setCheckedAt(new Date().toLocaleTimeString('fr-FR'));
