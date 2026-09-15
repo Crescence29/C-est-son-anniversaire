@@ -1,13 +1,8 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import os from 'os';
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.ts';
-import { User, UserRole, UserStatus, ReviewStatus, Category, Service, ServiceHealthState, SystemStatusService } from '../../types.ts';
-import { getMetricsSnapshot, getServerStartedAt } from '../metrics.ts';
+import { User, UserRole, UserStatus, ReviewStatus, Category, Service } from '../../types.ts';
 
 const router = Router();
 
@@ -20,27 +15,14 @@ router.get('/stats', (req: AuthRequest, res: Response): void => {
   res.json({ stats });
 });
 
-// GET /api/admin/activity-logs (réservé au compte développeur protégé)
-router.get('/activity-logs', (req: AuthRequest, res: Response): void => {
-  if (!req.user?.is_super_admin) {
-    res.status(403).json({ error: 'Accès réservé au compte développeur.' });
-    return;
-  }
-
-  res.json({ logs: db.activityLogs });
-});
-
 // GET /api/admin/users
 router.get('/users', (req: AuthRequest, res: Response): void => {
   const { role, status, search } = req.query;
 
-  let users = [...db.users];
-
-  // Le compte développeur protégé reste invisible pour tout le monde sauf
-  // son titulaire : les autres admins/staff ne doivent même pas savoir qu'il existe.
-  if (!req.user?.is_super_admin) {
-    users = users.filter((u) => !u.is_super_admin);
-  }
+  // Le rôle 'developer' est une piste d'accès entièrement séparée (voir
+  // src/server/routes/developer.ts) : un compte admin ne doit même pas
+  // savoir qu'un compte développeur existe.
+  let users = db.users.filter((u) => u.role !== 'developer');
 
   if (role && typeof role === 'string' && role !== 'all') {
     users = users.filter((u) => u.role === role);
@@ -212,43 +194,6 @@ router.put('/users/:id/status', (req: AuthRequest, res: Response): void => {
   });
 
   res.json({ message: `Compte ${status === 'active' ? 'réactivé' : 'suspendu'}.`, user });
-});
-
-// PUT /api/admin/users/:id/reset-password (réservé au compte développeur protégé)
-router.put('/users/:id/reset-password', async (req: AuthRequest, res: Response): Promise<void> => {
-  if (!req.user?.is_super_admin) {
-    res.status(403).json({ error: 'Seul le compte développeur peut réinitialiser le mot de passe d’un autre compte.' });
-    return;
-  }
-
-  const { id } = req.params;
-  const user = db.users.find((u) => u.id === id);
-  if (!user) {
-    res.status(404).json({ error: 'Utilisateur introuvable.' });
-    return;
-  }
-
-  const newPassword = `Csa${Math.random().toString(36).slice(2, 8)}!${Math.floor(Math.random() * 900 + 100)}`;
-  const newHash = await bcrypt.hash(newPassword, 10);
-  db.passwords.set(user.id, newHash);
-  user.token_version = (user.token_version || 0) + 1;
-  user.updated_at = new Date().toISOString();
-
-  db.logActivity({
-    actor_id: req.user.id,
-    actor_name: req.user.full_name,
-    actor_role: req.user.role,
-    action: 'password_reset_by_admin',
-    target_type: 'user',
-    target_id: user.id,
-    details: `Mot de passe de ${user.full_name} (${user.email}) réinitialisé par le développeur.`,
-    ip_address: req.ip,
-  });
-
-  res.json({
-    message: `Nouveau mot de passe généré pour ${user.full_name}.`,
-    newPassword,
-  });
 });
 
 // PUT /api/admin/users/:id/ban (définitif, aucune route de "débannissement" n'existe volontairement)
@@ -602,165 +547,6 @@ router.put('/reviews/:id/status', (req: AuthRequest, res: Response): void => {
   review.updated_at = new Date().toISOString();
 
   res.json({ message: `Statut de l’avis mis à jour (${status}).`, review });
-});
-
-let cachedAppVersion: string | null = null;
-function getAppVersion(): string {
-  if (cachedAppVersion) return cachedAppVersion;
-  try {
-    const pkgPath = path.join(process.cwd(), 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    cachedAppVersion = pkg.version || '0.0.0';
-  } catch {
-    cachedAppVersion = 'inconnue';
-  }
-  return cachedAppVersion;
-}
-
-function getDiskUsage(): { usedPercent: number; totalGB: number; usedGB: number } | null {
-  // Only meaningful on the Linux container this app actually runs on in
-  // production; on a Windows dev machine `df` doesn't exist, so this
-  // reports "non disponible" there rather than a fabricated number.
-  if (process.platform === 'win32') return null;
-  try {
-    const output = execSync('df -Pk /', { encoding: 'utf8' });
-    const line = output.trim().split('\n')[1];
-    const parts = line.trim().split(/\s+/);
-    const totalKB = Number(parts[1]);
-    const usedKB = Number(parts[2]);
-    if (!totalKB) return null;
-    return {
-      totalGB: Math.round((totalKB / 1024 / 1024) * 10) / 10,
-      usedGB: Math.round((usedKB / 1024 / 1024) * 10) / 10,
-      usedPercent: Math.round((usedKB / totalKB) * 100),
-    };
-  } catch {
-    return null;
-  }
-}
-
-// GET /api/admin/system-status (réservé au compte développeur protégé)
-router.get('/system-status', async (req: AuthRequest, res: Response): Promise<void> => {
-  if (!req.user?.is_super_admin) {
-    res.status(403).json({ error: 'Seul le compte développeur peut consulter l’état technique.' });
-    return;
-  }
-
-  let databaseState: ServiceHealthState = 'ok';
-  let databasePingMs: number | null = null;
-  try {
-    const start = Date.now();
-    await db.pool.query('SELECT 1');
-    databasePingMs = Date.now() - start;
-    databaseState = databasePingMs > 500 ? 'degraded' : 'ok';
-  } catch {
-    databaseState = 'down';
-  }
-
-  const metrics = getMetricsSnapshot();
-
-  const fifteenMinAgo = Date.now() - 15 * 60_000;
-  const lastActiveByUser = new Map<string, string>();
-  for (const log of db.activityLogs) {
-    if (!log.actor_id || new Date(log.created_at).getTime() < fifteenMinAgo) continue;
-    if (!lastActiveByUser.has(log.actor_id)) lastActiveByUser.set(log.actor_id, log.created_at);
-  }
-  const connectedUsers = Array.from(lastActiveByUser.entries())
-    .map(([actorId, lastActiveAt]) => {
-      const u = db.users.find((usr) => usr.id === actorId);
-      return { id: actorId, name: u?.full_name || 'Utilisateur supprimé', role: u?.role || 'client', lastActiveAt };
-    })
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
-  const connectedUsersCount = connectedUsers.length;
-
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-
-  const cpuCount = os.cpus()?.length || 0;
-  const cpuLoadPercent =
-    process.platform === 'win32' || cpuCount === 0
-      ? null
-      : Math.min(100, Math.round((os.loadavg()[0] / cpuCount) * 100));
-
-  const disk = getDiskUsage();
-
-  const services: SystemStatusService[] = [
-    { name: 'API', state: 'ok' },
-    { name: 'Base de données', state: databaseState, detail: databasePingMs !== null ? `${databasePingMs} ms` : undefined },
-    { name: 'Stockage', state: disk ? (disk.usedPercent >= 90 ? 'degraded' : 'ok') : 'unknown', detail: disk ? `${disk.usedPercent}%` : 'non disponible' },
-  ];
-
-  res.json({
-    status: {
-      serverState: 'ok',
-      apiState: 'ok',
-      databaseState,
-      databasePingMs,
-      avgResponseTimeMs: metrics.avgResponseTimeMs,
-      requestCount: metrics.requestCount,
-      recentErrors: metrics.recentErrors,
-      connectedUsersCount,
-      connectedUsers,
-      appVersion: getAppVersion(),
-      lastDeployAt: metrics.serverStartedAt,
-      lastBackupAt: db.lastBackupAt,
-      uptimeSeconds: metrics.uptimeSeconds,
-      disk,
-      memory: {
-        usedPercent: Math.round((usedMem / totalMem) * 100),
-        totalMB: Math.round(totalMem / 1024 / 1024),
-        usedMB: Math.round(usedMem / 1024 / 1024),
-      },
-      cpuLoadPercent,
-      services,
-    },
-  });
-});
-
-// POST /api/admin/system-backup (réservé au compte développeur protégé)
-// Exporte un instantané JSON de toutes les tables en mémoire et le renvoie
-// directement au navigateur (aucun fichier n'est écrit sur le disque du
-// serveur, dont le système de fichiers n'est pas garanti persistant).
-router.post('/system-backup', (req: AuthRequest, res: Response): void => {
-  if (!req.user?.is_super_admin) {
-    res.status(403).json({ error: 'Seul le compte développeur peut lancer une sauvegarde.' });
-    return;
-  }
-
-  const snapshot = {
-    generated_at: new Date().toISOString(),
-    app_version: getAppVersion(),
-    tables: {
-      users: db.users.map(({ ...u }) => u),
-      categories: db.categories,
-      services: db.services,
-      orders: db.orders,
-      payments: db.payments,
-      commissions: db.commissions,
-      reviews: db.reviews,
-      featured_videos: db.featuredVideos,
-      order_deliverables: db.orderDeliverables,
-      favorites: db.favorites,
-      notifications: db.notifications,
-      faq_items: db.faqItems,
-      support_messages: db.supportMessages,
-      site_settings: db.siteSettings,
-    },
-  };
-
-  db.recordBackup();
-
-  db.logActivity({
-    actor_id: req.user.id,
-    actor_name: req.user.full_name,
-    actor_role: req.user.role,
-    action: 'system_backup_created',
-    details: 'Sauvegarde manuelle des données déclenchée depuis le tableau de bord développeur.',
-    ip_address: req.ip,
-  });
-
-  res.json({ message: 'Sauvegarde générée.', lastBackupAt: db.lastBackupAt, backup: snapshot });
 });
 
 export default router;

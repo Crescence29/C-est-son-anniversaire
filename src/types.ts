@@ -1,5 +1,14 @@
-export type UserRole = 'client' | 'staff' | 'admin';
+// 'developer' is a role of its own, not a level above 'admin': it is
+// deliberately excluded from every requireRole('admin') check across the
+// API, so a developer account never automatically gains access to business
+// data (customers, orders, payments) — see src/server/routes/developer.ts.
+export type UserRole = 'client' | 'staff' | 'admin' | 'developer';
 export type UserStatus = 'active' | 'suspended';
+
+// Internal hierarchy shown alongside the existing staff/admin role — it
+// refines who's who within the business side without changing what the
+// underlying role/permission checks actually gate.
+export type AdminLevel = 'super_admin' | 'administrateur' | 'manager' | 'utilisateur';
 
 export interface User {
   id: string;
@@ -7,14 +16,42 @@ export interface User {
   email: string;
   phone: string;
   role: UserRole;
+  admin_level?: AdminLevel | null;
+  permissions?: string[];
   status: UserStatus;
   is_super_admin?: boolean;
   is_banned?: boolean;
   status_reason?: string | null;
   token_version?: number;
   avatar_url?: string;
+  last_login_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Granular permissions an internal account (staff/admin) can be given on
+// top of its role. Enforced today on the developer-only account-management
+// routes (src/server/routes/developer.ts); not yet retrofitted across every
+// existing /api/admin/* and /api/staff/* route — see rapport.md.
+export const ACCOUNT_PERMISSION_KEYS = [
+  'orders.manage',
+  'catalog.manage',
+  'users.manage',
+  'settings.manage',
+  'reviews.moderate',
+  'support.respond',
+] as const;
+export type AccountPermission = (typeof ACCOUNT_PERMISSION_KEYS)[number];
+
+export interface AccountSession {
+  id: string;
+  user_id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  device_label: string | null;
+  created_at: string;
+  last_seen_at: string;
+  revoked_at: string | null;
 }
 
 export interface SiteSettings {

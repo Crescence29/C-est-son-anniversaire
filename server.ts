@@ -16,6 +16,7 @@ import notificationsRouter from './src/server/routes/notifications.ts';
 import videosRouter from './src/server/routes/videos.ts';
 import staffRouter from './src/server/routes/staff.ts';
 import adminRouter from './src/server/routes/admin.ts';
+import developerRouter from './src/server/routes/developer.ts';
 import settingsRouter from './src/server/routes/settings.ts';
 import faqRouter from './src/server/routes/faq.ts';
 import supportRouter from './src/server/routes/support.ts';
@@ -103,6 +104,7 @@ async function startServer() {
   app.use('/api/videos', videosRouter);
   app.use('/api/staff', staffRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/developer', developerRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/faq', faqRouter);
   app.use('/api/support-messages', supportRouter);

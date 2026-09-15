@@ -36,6 +36,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
 
   const isPrivileged = user?.role === 'staff' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
+  const isDeveloper = user?.role === 'developer';
 
   const goTo = (view: string, param?: string) => {
     setManualTab(null);
@@ -75,15 +76,17 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
     },
     {
       key: 'account',
-      label: isPrivileged ? (isAdmin ? 'Admin' : 'Staff') : 'Compte',
+      label: isDeveloper ? 'Développeur' : isPrivileged ? (isAdmin ? 'Admin' : 'Staff') : 'Compte',
       active:
         manualTab === null &&
-        (isPrivileged
+        (isDeveloper
+          ? currentView === 'developer'
+          : isPrivileged
           ? currentView === 'staff' || currentView === 'admin'
           : currentView === 'account' || currentView === 'login' || currentView === 'register' || currentView === 'order-detail'),
-      onClick: () => goTo(isPrivileged ? (isAdmin ? 'admin' : 'staff') : user ? 'account' : 'login'),
+      onClick: () => goTo(isDeveloper ? 'developer' : isPrivileged ? (isAdmin ? 'admin' : 'staff') : user ? 'account' : 'login'),
       renderIcon: (effectClassName) => {
-        const Icon = isPrivileged ? (isAdmin ? Shield : Briefcase) : User;
+        const Icon = isDeveloper ? Shield : isPrivileged ? (isAdmin ? Shield : Briefcase) : User;
         return <Icon className={`${ICON_SIZE} ${effectClassName}`} />;
       },
     },

@@ -1,5 +1,5 @@
 import mysql, { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVideo, OrderDeliverable, Favorite, Notification, ActivityLog, OrderStatus, UserRole, StaffDashboardStats, AdminDashboardStats, ClientDashboardStats, SiteSettings, FaqItem, SupportMessage } from '../types.ts';
+import { User, Category, Service, Order, Payment, Commission, Review, FeaturedVideo, OrderDeliverable, Favorite, Notification, ActivityLog, OrderStatus, UserRole, StaffDashboardStats, AdminDashboardStats, ClientDashboardStats, SiteSettings, FaqItem, SupportMessage, AccountSession } from '../types.ts';
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logo_mode: 'image',
@@ -39,10 +39,10 @@ interface DbConfig {
 type TableName =
   | 'users' | 'categories' | 'services' | 'orders' | 'payments' | 'commissions'
   | 'reviews' | 'featured_videos' | 'order_deliverables' | 'favorites' | 'notifications' | 'refresh_tokens'
-  | 'activity_logs' | 'faq_items' | 'support_messages';
+  | 'activity_logs' | 'faq_items' | 'support_messages' | 'sessions';
 
 const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
-  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
+  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'admin_level', 'permissions', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
   categories: { primaryKey: 'id', columns: ['id', 'name', 'slug', 'description', 'image_url', 'icon_name', 'commission_rate', 'is_active', 'created_at', 'updated_at'] },
   services: { primaryKey: 'id', columns: ['id', 'category_id', 'name', 'slug', 'description', 'short_description', 'price', 'currency', 'delay_label', 'image_url', 'is_available', 'is_featured', 'is_live_broadcast', 'created_at', 'updated_at'] },
   orders: { primaryKey: 'id', columns: ['id', 'order_number', 'client_id', 'service_id', 'category_id', 'recipient_name', 'recipient_phone', 'birthday_date', 'message', 'special_instructions', 'status', 'amount', 'currency', 'commission_rate', 'commission_amount', 'net_amount', 'delivered_at', 'created_at', 'updated_at'] },
@@ -57,6 +57,7 @@ const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
   activity_logs: { primaryKey: 'id', columns: ['id', 'actor_id', 'actor_name', 'actor_role', 'action', 'target_type', 'target_id', 'details', 'ip_address', 'created_at'] },
   faq_items: { primaryKey: 'id', columns: ['id', 'question', 'answer', 'position', 'is_active', 'created_at', 'updated_at'] },
   support_messages: { primaryKey: 'id', columns: ['id', 'user_id', 'subject', 'message', 'status', 'reply', 'replied_by', 'replied_by_name', 'replied_at', 'created_at', 'updated_at'] },
+  sessions: { primaryKey: 'id', columns: ['id', 'user_id', 'ip_address', 'user_agent', 'device_label', 'created_at', 'last_seen_at', 'revoked_at'] },
 };
 
 function envConfig(): DbConfig {
@@ -78,7 +79,7 @@ function iso(value: unknown): string | undefined {
 
 function normalizeRow(row: Record<string, any>): Record<string, any> {
   const out = { ...row };
-  for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at']) {
+  for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at', 'last_seen_at']) {
     if (key in out && out[key] != null) out[key] = iso(out[key]);
   }
   for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned']) {
@@ -109,6 +110,7 @@ class DataStore {
   activityLogs: ActivityLog[] = [];
   faqItems: FaqItem[] = [];
   supportMessages: SupportMessage[] = [];
+  sessions: AccountSession[] = [];
   siteSettings: SiteSettings = { ...DEFAULT_SITE_SETTINGS };
   // Kept out of `siteSettings` on purpose: that object is served publicly by
   // GET /api/settings for the homepage CMS content, and backup timing isn't
@@ -184,6 +186,13 @@ class DataStore {
     this.notifications = await load<Notification>('notifications');
     this.faqItems = await load<FaqItem>('faq_items');
     this.supportMessages = await load<SupportMessage>('support_messages');
+
+    // Comme le journal d'activité : borné en mémoire, l'historique complet
+    // reste consultable en base si besoin.
+    const [sessionRows] = await connection.query<RowDataPacket[]>(
+      'SELECT * FROM `sessions` ORDER BY created_at DESC LIMIT 500'
+    );
+    this.sessions = sessionRows.map((row) => normalizeRow(row as Record<string, any>)) as AccountSession[];
 
     // Ne garder que les événements récents en mémoire : le journal grossit en
     // continu, contrairement aux autres tables qui restent de taille bornée.
@@ -298,6 +307,7 @@ class DataStore {
     this.activityLogs = this.makePersistentArray(this.activityLogs, 'activity_logs');
     this.faqItems = this.makePersistentArray(this.faqItems, 'faq_items');
     this.supportMessages = this.makePersistentArray(this.supportMessages, 'support_messages');
+    this.sessions = this.makePersistentArray(this.sessions, 'sessions');
 
     const originalSet = this.passwords.set.bind(this.passwords);
     this.passwords.set = ((userId: string, hash: string) => {
@@ -417,6 +427,34 @@ class DataStore {
     // Le tableau en mémoire reste borné ; l'historique complet vit en base.
     if (this.activityLogs.length > 500) {
       this.activityLogs.length = 500;
+    }
+  }
+
+  recordSession(entry: { userId: string; ipAddress: string | null; userAgent: string | null; deviceLabel: string | null }) {
+    const now = new Date().toISOString();
+    this.sessions.unshift({
+      id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      user_id: entry.userId,
+      ip_address: entry.ipAddress,
+      user_agent: entry.userAgent,
+      device_label: entry.deviceLabel,
+      created_at: now,
+      last_seen_at: now,
+      revoked_at: null,
+    });
+    if (this.sessions.length > 500) this.sessions.length = 500;
+  }
+
+  // Ne révoque pas les jetons individuellement (aucune session ne porte
+  // d'identifiant dans le JWT aujourd'hui) : marque toutes les sessions de
+  // l'utilisateur comme révoquées pour l'affichage, l'invalidation réelle
+  // passant par l'incrément de token_version fait par l'appelant.
+  revokeUserSessions(userId: string) {
+    const now = new Date().toISOString();
+    for (const session of this.sessions) {
+      if (session.user_id === userId && !session.revoked_at) {
+        session.revoked_at = now;
+      }
     }
   }
 

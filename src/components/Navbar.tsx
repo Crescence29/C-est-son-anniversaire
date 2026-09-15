@@ -99,6 +99,20 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               Admin
             </button>
           )}
+
+          {user?.role === 'developer' && (
+            <button
+              onClick={() => onNavigate('developer')}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5 transition-all ${
+                currentView === 'developer'
+                  ? 'bg-gold-brand text-plum font-bold shadow-sm'
+                  : 'text-ink font-semibold bg-gold-brand/20 hover:bg-gold-brand/30'
+              }`}
+            >
+              <Shield className={`w-3.5 h-3.5 ${currentView === 'developer' ? 'text-plum' : 'text-ink'}`} />
+              Développeur
+            </button>
+          )}
         </nav>
 
         {/* Action Controls (Search, Notifications, Profile / Login) */}
@@ -223,7 +237,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                     <div className="text-[11px] text-ink/60 truncate font-mono">{user.email}</div>
                     <div className="mt-1.5 inline-block">
                       <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-bold ${
-                        user.role === 'admin' ? 'bg-gold-brand/20 text-gold-brand' : user.role === 'staff' ? 'bg-violet/20 text-violet' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                        user.role === 'developer' ? 'bg-gold-brand/20 text-gold-brand' : user.role === 'admin' ? 'bg-gold-brand/20 text-gold-brand' : user.role === 'staff' ? 'bg-violet/20 text-violet' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
                       }`}>
                         Rôle : {user.role}
                       </span>
@@ -239,7 +253,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-ink hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors text-left"
                     >
                       <User className="w-3.5 h-3.5 text-violet" />
-                      {user.is_super_admin
+                      {user.role === 'developer'
                         ? 'Espace Développeur'
                         : user.role === 'admin'
                         ? 'Espace Admin'
@@ -271,6 +285,19 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                       >
                         <Shield className="w-3.5 h-3.5 text-gold-brand" />
                         Administration & Commissions
+                      </button>
+                    )}
+
+                    {user.role === 'developer' && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onNavigate('developer');
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-ink hover:bg-black/5 dark:hover:bg-white/10 rounded-xl transition-colors text-left font-semibold text-gold-brand"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-gold-brand" />
+                        Tableau de bord développeur
                       </button>
                     )}
 

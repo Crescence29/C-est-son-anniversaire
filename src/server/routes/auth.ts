@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { User } from '../../types.ts';
+import { describeDevice } from '../utils/userAgent.ts';
 
 interface UserWithResetToken extends User {
   reset_password_token?: string | null;
@@ -103,6 +104,13 @@ router.post('/register', async (req, res: Response): Promise<void> => {
 
     const token = generateToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
+
+    db.recordSession({
+      userId: newUser.id,
+      ipAddress: req.ip || null,
+      userAgent: req.headers['user-agent'] || null,
+      deviceLabel: describeDevice(req.headers['user-agent']),
+    });
 
     db.logActivity({
       actor_id: newUser.id,
@@ -215,6 +223,13 @@ router.post('/login', async (req, res: Response): Promise<void> => {
 
     const token = generateToken(user);
     const refreshToken = generateRefreshToken(user);
+
+    db.recordSession({
+      userId: user.id,
+      ipAddress: req.ip || null,
+      userAgent: req.headers['user-agent'] || null,
+      deviceLabel: describeDevice(req.headers['user-agent']),
+    });
 
     db.logActivity({
       actor_id: user.id,

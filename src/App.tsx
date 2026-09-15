@@ -15,6 +15,7 @@ import { ClientAccountPage } from './pages/ClientAccountPage.tsx';
 import { OrderDetailPage } from './pages/OrderDetailPage.tsx';
 import { StaffDashboardPage } from './pages/StaffDashboardPage.tsx';
 import { AdminDashboardPage } from './pages/AdminDashboardPage.tsx';
+import { DeveloperDashboardPage } from './pages/DeveloperDashboardPage.tsx';
 import { AuthPages } from './pages/AuthPages.tsx';
 
 import { Service, Order } from './types.ts';
@@ -154,6 +155,10 @@ const MainApp: React.FC = () => {
 
         {currentView === 'admin' && (
           <AdminDashboardPage />
+        )}
+
+        {currentView === 'developer' && (
+          <DeveloperDashboardPage />
         )}
 
         {(currentView === 'login' || currentView === 'register') && (
