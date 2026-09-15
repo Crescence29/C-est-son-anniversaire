@@ -14,9 +14,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret-anniversaire-key-jwt-2026';
 
 export interface AuthRequest extends Request {
   user?: User;
+  sessionId?: string;
 }
 
-export function generateToken(user: User): string {
+export function generateToken(user: User, sessionId?: string): string {
   return jwt.sign(
     {
       id: user.id,
@@ -24,6 +25,7 @@ export function generateToken(user: User): string {
       role: user.role,
       status: user.status,
       tv: user.token_version || 0,
+      ...(sessionId ? { sid: sessionId } : {}),
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -48,7 +50,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: UserRole; tv?: number };
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: UserRole; tv?: number; sid?: string };
     const user = db.users.find((u) => u.id === decoded.id);
 
     if (!user) {
@@ -67,6 +69,19 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
     if ((decoded.tv || 0) !== (user.token_version || 0)) {
       res.status(401).json({ error: 'Votre session a expiré suite à un changement de mot de passe. Veuillez vous reconnecter.' });
       return;
+    }
+
+    // Tokens issued before this session tracking existed carry no `sid` and
+    // are accepted as before (nothing to check against); tokens that do
+    // carry one are rejected once that specific session has been logged out
+    // or force-disconnected, without touching every other device's session.
+    if (decoded.sid) {
+      const session = db.sessions.find((s) => s.id === decoded.sid);
+      if (session?.revoked_at) {
+        res.status(401).json({ error: 'Cette session a été déconnectée. Veuillez vous reconnecter.' });
+        return;
+      }
+      req.sessionId = decoded.sid;
     }
 
     req.user = user;

@@ -439,10 +439,11 @@ class DataStore {
     }
   }
 
-  recordSession(entry: { userId: string; ipAddress: string | null; userAgent: string | null; deviceLabel: string | null }) {
+  recordSession(entry: { userId: string; ipAddress: string | null; userAgent: string | null; deviceLabel: string | null }): string {
     const now = new Date().toISOString();
+    const id = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     this.sessions.unshift({
-      id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id,
       user_id: entry.userId,
       ip_address: entry.ipAddress,
       user_agent: entry.userAgent,
@@ -452,6 +453,15 @@ class DataStore {
       revoked_at: null,
     });
     if (this.sessions.length > 500) this.sessions.length = 500;
+    return id;
+  }
+
+  // Termine une session précise (à la déconnexion volontaire), sans toucher
+  // aux autres appareils ni incrémenter token_version — contrairement à
+  // revokeUserSessions, qui coupe tout d'un coup pour une action de sécurité.
+  revokeSession(sessionId: string) {
+    const session = this.sessions.find((s) => s.id === sessionId);
+    if (session && !session.revoked_at) session.revoked_at = new Date().toISOString();
   }
 
   // Ne révoque pas les jetons individuellement (aucune session ne porte

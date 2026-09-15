@@ -102,15 +102,15 @@ router.post('/register', async (req, res: Response): Promise<void> => {
       created_at: new Date().toISOString(),
     });
 
-    const token = generateToken(newUser);
-    const refreshToken = generateRefreshToken(newUser);
-
-    db.recordSession({
+    const sessionId = db.recordSession({
       userId: newUser.id,
       ipAddress: req.ip || null,
       userAgent: req.headers['user-agent'] || null,
       deviceLabel: describeDevice(req.headers['user-agent']),
     });
+
+    const token = generateToken(newUser, sessionId);
+    const refreshToken = generateRefreshToken(newUser);
 
     db.logActivity({
       actor_id: newUser.id,
@@ -221,15 +221,15 @@ router.post('/login', async (req, res: Response): Promise<void> => {
       return;
     }
 
-    const token = generateToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    db.recordSession({
+    const sessionId = db.recordSession({
       userId: user.id,
       ipAddress: req.ip || null,
       userAgent: req.headers['user-agent'] || null,
       deviceLabel: describeDevice(req.headers['user-agent']),
     });
+
+    const token = generateToken(user, sessionId);
+    const refreshToken = generateRefreshToken(user);
 
     db.logActivity({
       actor_id: user.id,
@@ -256,6 +256,17 @@ router.post('/login', async (req, res: Response): Promise<void> => {
 // GET /api/auth/me
 router.get('/me', authenticateToken, (req: AuthRequest, res: Response): void => {
   res.json({ user: req.user });
+});
+
+// POST /api/auth/logout
+// Ferme uniquement la session courante (celle du jeton envoyé) dans le
+// suivi des appareils — n'invalide pas les autres appareils et ne touche
+// pas token_version. Sans effet sur un jeton émis avant l'ajout du suivi
+// de session (pas de `sid`) : il n'y a alors rien à fermer côté serveur,
+// mais la déconnexion côté client (suppression du jeton local) reste normale.
+router.post('/logout', authenticateToken, (req: AuthRequest, res: Response): void => {
+  if (req.sessionId) db.revokeSession(req.sessionId);
+  res.json({ message: 'Déconnecté.' });
 });
 
 // PUT /api/auth/profile

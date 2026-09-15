@@ -84,6 +84,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    // Fire-and-forget: closes this device's entry in the session list on
+    // the server, but the local logout must not wait on (or fail because
+    // of) a network round-trip.
+    api.post('/auth/logout').catch(() => {});
     localStorage.removeItem('csa_auth_token');
     setToken(null);
     setUser(null);

@@ -8,6 +8,7 @@ import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole } from '../../types.ts';
 import { getMetricsSnapshot } from '../metrics.ts';
+import { describeDevice } from '../utils/userAgent.ts';
 
 const router = Router();
 
@@ -526,7 +527,13 @@ router.post('/accounts/:id/impersonate', (req: AuthRequest, res: Response): void
     return;
   }
 
-  const token = generateToken(user);
+  const sessionId = db.recordSession({
+    userId: user.id,
+    ipAddress: req.ip || null,
+    userAgent: req.headers['user-agent'] || null,
+    deviceLabel: `${describeDevice(req.headers['user-agent'])} (connexion développeur)`,
+  });
+  const token = generateToken(user, sessionId);
   const refreshToken = generateRefreshToken(user);
 
   db.logActivity({
