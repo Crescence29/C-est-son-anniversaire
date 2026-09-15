@@ -29,13 +29,13 @@ UPDATE users SET role = 'developer', admin_level = NULL WHERE is_super_admin = T
 -- il n'existe pas encore de révocation par session individuelle.
 CREATE TABLE sessions (
   id VARCHAR(36) PRIMARY KEY,
-  user_id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   ip_address VARCHAR(64) NULL,
   user_agent VARCHAR(500) NULL,
   device_label VARCHAR(150) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   revoked_at TIMESTAMP NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) COLLATE utf8mb4_unicode_ci ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_sessions_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
