@@ -33,10 +33,11 @@ export async function apiRequest<T = any>(
       window.dispatchEvent(new CustomEvent('app:maintenance', { detail: { message: data.message } }));
     }
     const errorMsg = data?.error || data?.message || `Erreur ${response.status}`;
-    const error = new Error(errorMsg) as Error & { banned?: boolean; suspended?: boolean; reason?: string | null };
+    const error = new Error(errorMsg) as Error & { banned?: boolean; suspended?: boolean; reason?: string | null; requiresTotp?: boolean };
     if (data?.banned) error.banned = true;
     if (data?.suspended) error.suspended = true;
     if (data?.reason !== undefined) error.reason = data.reason;
+    if (data?.requiresTotp) error.requiresTotp = true;
     throw error;
   }
 

@@ -6,6 +6,7 @@ import { authenticateToken, AuthRequest, generateToken, generateRefreshToken } f
 import { User } from '../../types.ts';
 import { describeDevice } from '../utils/userAgent.ts';
 import { recordLog } from '../logs.ts';
+import { verifyTotp } from '../totp.ts';
 
 interface UserWithResetToken extends User {
   reset_password_token?: string | null;
@@ -138,7 +139,7 @@ router.post('/register', async (req, res: Response): Promise<void> => {
 // POST /api/auth/login
 router.post('/login', async (req, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password, totpToken, backupCode } = req.body;
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email et mot de passe requis.' });
@@ -224,6 +225,43 @@ router.post('/login', async (req, res: Response): Promise<void> => {
       recordLog('warn', 'AuthService', 'Échec d’authentification : mot de passe incorrect', user.email);
       res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
       return;
+    }
+
+    if (user.totp_enabled) {
+      const secret = db.getTotpSecret(user.id);
+      let totpOk = Boolean(secret && totpToken && verifyTotp(String(totpToken), secret));
+
+      if (!totpOk && backupCode) {
+        const hashes = db.getTotpBackupCodeHashes(user.id);
+        for (let i = 0; i < hashes.length; i++) {
+          if (await bcrypt.compare(String(backupCode).trim(), hashes[i])) {
+            totpOk = true;
+            db.setTotpBackupCodeHashes(user.id, hashes.filter((_, idx) => idx !== i));
+            recordLog('warn', 'AuthService', 'Connexion via code de secours 2FA (le code est désormais consommé)', user.email);
+            break;
+          }
+        }
+      }
+
+      if (!totpOk) {
+        if (!totpToken && !backupCode) {
+          res.status(401).json({ error: 'Code de vérification requis.', requiresTotp: true });
+          return;
+        }
+        db.logActivity({
+          actor_id: user.id,
+          actor_name: user.full_name,
+          actor_role: user.role,
+          action: 'login_failed',
+          target_type: 'user',
+          target_id: user.id,
+          details: 'Code de double authentification (2FA) incorrect.',
+          ip_address: req.ip,
+        });
+        recordLog('warn', 'AuthService', 'Échec d’authentification : code 2FA incorrect', user.email);
+        res.status(401).json({ error: 'Code de vérification incorrect.', requiresTotp: true });
+        return;
+      }
     }
 
     const sessionId = db.recordSession({

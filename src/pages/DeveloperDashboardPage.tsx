@@ -4,7 +4,7 @@ import {
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
-  Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff, Wrench, HardDrive, Clock,
+  Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff, Wrench, HardDrive, Clock, ShieldQuestion, Smartphone,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -17,6 +17,7 @@ import {
   ApiKeySummary, ApiScope, API_SCOPES, WebhookSummary, WebhookEvent, WEBHOOK_EVENTS, WebhookDelivery, EndpointStat, ExternalServiceStatus,
   LogEntry, LogLevel, DatabaseStatus, DatabaseTableInfo, DatabaseMigration, IntegrityCheckResult,
   MediaSummary, MediaLinkCheckResult, DeploymentInfo, ConfigInfo, MaintenanceOverview, MaintenanceServiceCheck,
+  SecurityOverview,
 } from '../types.ts';
 
 type InternalAccount = {
@@ -78,6 +79,9 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   maintenance_cache_cleared: RefreshCw,
   maintenance_config_reloaded: RefreshCw,
   maintenance_server_restart: Power,
+  totp_enabled: ShieldCheck,
+  totp_disabled: ShieldAlert,
+  session_revoked: Monitor,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -100,6 +104,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
   maintenance_cache_cleared: 'Cache technique vidé',
   maintenance_config_reloaded: 'Configuration rechargée',
   maintenance_server_restart: 'Redémarrage du serveur déclenché',
+  totp_enabled: 'Double authentification activée',
+  totp_disabled: 'Double authentification désactivée',
+  session_revoked: 'Session révoquée',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -121,7 +128,7 @@ function timeAgo(iso: string | null): string {
 
 export const DeveloperDashboardPage: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config' | 'maintenance'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config' | 'maintenance' | 'security'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -568,6 +575,99 @@ export const DeveloperDashboardPage: React.FC = () => {
     }
   };
 
+  // ---- Sécurité ----
+  const [securityOverview, setSecurityOverview] = useState<SecurityOverview | null>(null);
+  const [mySessions, setMySessions] = useState<AccountSession[]>([]);
+  const [totpSetup, setTotpSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [totpEnableCode, setTotpEnableCode] = useState('');
+  const [totpBackupCodes, setTotpBackupCodes] = useState<string[] | null>(null);
+  const [totpDisablePassword, setTotpDisablePassword] = useState('');
+  const [showTotpDisableForm, setShowTotpDisableForm] = useState(false);
+  const [totpBusy, setTotpBusy] = useState(false);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+
+  const fetchSecurityOverview = async () => {
+    try {
+      const res = await api.get<SecurityOverview>('/developer/security/overview');
+      setSecurityOverview(res);
+    } catch {
+      // silencieux
+    }
+  };
+
+  const fetchMySessions = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await api.get<{ sessions: AccountSession[] }>(`/developer/accounts/${currentUser.id}/sessions`);
+      setMySessions(res.sessions || []);
+    } catch {
+      // silencieux
+    }
+  };
+
+  useEffect(() => {
+    fetchSecurityOverview();
+    fetchMySessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startTotpSetup = async () => {
+    setTotpBusy(true);
+    try {
+      const res = await api.post<{ secret: string; otpauthUrl: string }>('/developer/security/totp/setup', {});
+      setTotpSetup(res);
+    } catch (err: any) {
+      alert(err?.message || 'Échec du démarrage de la configuration.');
+    } finally {
+      setTotpBusy(false);
+    }
+  };
+
+  const confirmTotpEnable = async () => {
+    setTotpBusy(true);
+    try {
+      const res = await api.post<{ backupCodes: string[] }>('/developer/security/totp/enable', { token: totpEnableCode });
+      setTotpBackupCodes(res.backupCodes);
+      setTotpSetup(null);
+      setTotpEnableCode('');
+      fetchSecurityOverview();
+    } catch (err: any) {
+      alert(err?.message || 'Code incorrect.');
+    } finally {
+      setTotpBusy(false);
+    }
+  };
+
+  const disableTotp = async () => {
+    if (!window.confirm('Désactiver la double authentification sur votre compte ?')) return;
+    setTotpBusy(true);
+    try {
+      await api.post('/developer/security/totp/disable', { password: totpDisablePassword });
+      setShowTotpDisableForm(false);
+      setTotpDisablePassword('');
+      fetchSecurityOverview();
+    } catch (err: any) {
+      alert(err?.message || 'Mot de passe incorrect.');
+    } finally {
+      setTotpBusy(false);
+    }
+  };
+
+  const revokeMySession = async (sessionId: string) => {
+    if (!currentUser) return;
+    if (!window.confirm('Déconnecter cet appareil ?')) return;
+    setRevokingSessionId(sessionId);
+    try {
+      await api.post(`/developer/accounts/${currentUser.id}/sessions/${sessionId}/revoke`, {});
+      fetchMySessions();
+      fetchSecurityOverview();
+    } catch (err: any) {
+      alert(err?.message || 'Échec de la révocation.');
+    } finally {
+      setRevokingSessionId(null);
+    }
+  };
+
   // ---- Gestion de l'API ----
   const [endpoints, setEndpoints] = useState<EndpointStat[]>([]);
   const [externalServices, setExternalServices] = useState<ExternalServiceStatus[]>([]);
@@ -691,6 +791,7 @@ export const DeveloperDashboardPage: React.FC = () => {
         { key: 'deployment', label: 'Déploiement', icon: Rocket },
         { key: 'config', label: 'Configuration', icon: Sliders },
         { key: 'maintenance', label: 'Centre de maintenance', icon: Wrench },
+        { key: 'security', label: 'Sécurité', icon: ShieldQuestion },
         { key: 'api', label: `API (${endpoints.length})`, icon: Code2 },
         { key: 'brand', label: 'Identité visuelle', icon: Crown },
       ],
@@ -709,6 +810,7 @@ export const DeveloperDashboardPage: React.FC = () => {
     deployment: { title: 'Déploiement', subtitle: 'Version réellement déployée, historique des commits, environnements' },
     config: { title: 'Configuration', subtitle: 'Réglages techniques réels — les valeurs sensibles restent masquées' },
     maintenance: { title: 'Centre de maintenance', subtitle: 'Actions techniques réelles — les opérations sensibles demandent une confirmation' },
+    security: { title: 'Sécurité', subtitle: 'Double authentification, sessions et alertes sur votre compte' },
     api: { title: 'Gestion de l’API', subtitle: 'Endpoints réels, clés API, webhooks et services externes' },
     brand: { title: 'Identité visuelle', subtitle: 'Logo affiché dans toute l’application' },
     accounts: { title: 'Comptes & rôles', subtitle: 'Structure des comptes internes (staff / admin) uniquement' },
@@ -1505,6 +1607,153 @@ export const DeveloperDashboardPage: React.FC = () => {
                     Non proposée ici par sécurité, pour la même raison que dans l'onglet Base de données : une restauration écraserait des données clients/commandes réelles. Utilisez les sauvegardes téléchargées pour une restauration manuelle si nécessaire.
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <div className="space-y-6">
+              {securityOverview && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>2FA</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${securityOverview.totpEnabled ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{securityOverview.totpEnabled ? 'Activée' : 'Désactivée'}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>Sessions actives</div>
+                    <div className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{securityOverview.activeSessionsCount}</div>
+                  </div>
+                  <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>Tentatives échouées</div>
+                    <div className="text-sm font-bold" style={{ color: securityOverview.failedLoginAttempts > 0 ? '#fbbf24' : 'var(--dd-ink)' }}>{securityOverview.failedLoginAttempts}</div>
+                  </div>
+                  <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>API Keys</div>
+                    <div className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{securityOverview.apiKeysCount}</div>
+                  </div>
+                  <div className="col-span-2 sm:col-span-4 rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>Dernière connexion</div>
+                    <div className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{securityOverview.lastLoginAt ? new Date(securityOverview.lastLoginAt).toLocaleString('fr-FR') : 'Jamais'}</div>
+                  </div>
+                </div>
+              )}
+
+              {securityOverview && securityOverview.alerts.length > 0 && (
+                <div className="rounded-2xl p-5 border space-y-2" style={{ background: 'rgba(244,63,94,0.08)', borderColor: 'var(--dd-border)' }}>
+                  <h3 className="font-serif font-bold text-sm flex items-center gap-2" style={{ color: '#f43f5e' }}>
+                    <AlertTriangle className="w-4 h-4" /> Alertes de sécurité
+                  </h3>
+                  {securityOverview.alerts.map((a, i) => (
+                    <p key={i} className="text-xs" style={{ color: '#f43f5e' }}>{a.message}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-base mb-3 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                  <ShieldCheck className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                  Double authentification (2FA)
+                </h3>
+
+                {totpBackupCodes ? (
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold" style={{ color: '#34d399' }}>2FA activée ! Notez ces codes de secours — ils ne seront plus jamais affichés :</p>
+                    <div className="grid grid-cols-2 gap-2 font-mono text-xs p-3 rounded-xl" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>
+                      {totpBackupCodes.map((c) => <div key={c}>{c}</div>)}
+                    </div>
+                    <button onClick={() => setTotpBackupCodes(null)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
+                      J'ai noté mes codes
+                    </button>
+                  </div>
+                ) : securityOverview?.totpEnabled ? (
+                  showTotpDisableForm ? (
+                    <div className="space-y-2">
+                      <input
+                        type="password"
+                        value={totpDisablePassword}
+                        onChange={(e) => setTotpDisablePassword(e.target.value)}
+                        placeholder="Votre mot de passe"
+                        className="w-full px-3 py-2 rounded-xl text-xs"
+                        style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={disableTotp} disabled={totpBusy || !totpDisablePassword} className="flex-1 py-2 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                          Confirmer la désactivation
+                        </button>
+                        <button onClick={() => setShowTotpDisableForm(false)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowTotpDisableForm(true)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                      Désactiver la 2FA
+                    </button>
+                  )
+                ) : totpSetup ? (
+                  <div className="space-y-3">
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-soft)' }}>
+                      Ajoutez ce compte dans Google Authenticator, Authy ou une app compatible, en collant l'URL ou en saisissant la clé manuellement :
+                    </p>
+                    <div className="p-3 rounded-xl font-mono text-xs break-all" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>{totpSetup.secret}</div>
+                    <a href={totpSetup.otpauthUrl} className="text-xs underline" style={{ color: 'var(--dd-accent)' }}>Ouvrir dans une application d'authentification</a>
+                    <input
+                      type="text"
+                      value={totpEnableCode}
+                      onChange={(e) => setTotpEnableCode(e.target.value)}
+                      placeholder="Code à 6 chiffres"
+                      className="w-full px-3 py-2 rounded-xl text-xs font-mono tracking-widest"
+                      style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={confirmTotpEnable} disabled={totpBusy || totpEnableCode.length !== 6} className="flex-1 py-2 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
+                        Confirmer et activer
+                      </button>
+                      <button onClick={() => setTotpSetup(null)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={startTotpSetup} disabled={totpBusy} className="px-4 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
+                    Activer la 2FA
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-2xl p-6 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
+                <h3 className="font-serif font-bold text-base mb-3 flex items-center gap-2" style={{ color: 'var(--dd-ink)' }}>
+                  <Smartphone className="w-4 h-4" style={{ color: 'var(--dd-accent)' }} />
+                  Sessions et appareils connectés
+                </h3>
+                {mySessions.filter((s) => !s.revoked_at).length === 0 ? (
+                  <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucune session active.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {mySessions.filter((s) => !s.revoked_at).map((s) => (
+                      <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--dd-panel-hover)' }}>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold truncate" style={{ color: 'var(--dd-ink)' }}>{s.device_label || 'Appareil inconnu'}</div>
+                          <div className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{s.ip_address || 'IP inconnue'} · vu {timeAgo(s.last_seen_at)}</div>
+                        </div>
+                        <button
+                          onClick={() => revokeMySession(s.id)}
+                          disabled={revokingSessionId === s.id}
+                          className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold disabled:opacity-50"
+                          style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}
+                        >
+                          {revokingSessionId === s.id ? 'Révocation...' : 'Déconnecter'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] mt-3" style={{ color: 'var(--dd-ink-faint)' }}>
+                  La gestion des sessions, des rôles et des permissions granulaires des autres comptes internes se fait dans l'onglet « Comptes & rôles ».
+                </p>
               </div>
             </div>
           )}

@@ -33,6 +33,11 @@ export const AuthPages: React.FC<AuthPagesProps> = ({
   const [accountGate, setAccountGate] = useState<{ type: 'suspended' | 'banned'; reason: string | null } | null>(null);
   const [gateAcknowledged, setGateAcknowledged] = useState(false);
 
+  // Deuxième étape de connexion si le compte a la double authentification (2FA) activée
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
+
   // Forgot Password Flow
   const [resetCodeRequested, setResetCodeRequested] = useState(false);
   const [resetCode, setResetCode] = useState('');
@@ -84,7 +89,11 @@ export const AuthPages: React.FC<AuthPagesProps> = ({
 
     try {
       if (mode === 'login') {
-        await login(email, password);
+        if (totpRequired) {
+          await login(email, password, useBackupCode ? undefined : totpCode, useBackupCode ? totpCode : undefined);
+        } else {
+          await login(email, password);
+        }
       } else {
         if (!fullName.trim()) {
           setErrorMessage('Veuillez renseigner votre nom complet.');
@@ -100,6 +109,10 @@ export const AuthPages: React.FC<AuthPagesProps> = ({
       } else if (err?.suspended) {
         setAccountGate({ type: 'suspended', reason: err.reason || null });
         setGateAcknowledged(false);
+      } else if (err?.requiresTotp) {
+        setTotpRequired(true);
+        setTotpCode('');
+        if (totpRequired) setErrorMessage(err?.message || 'Code incorrect.');
       } else {
         setErrorMessage(err?.message || 'Erreur lors de l’authentification.');
       }
@@ -306,7 +319,52 @@ export const AuthPages: React.FC<AuthPagesProps> = ({
         )}
 
         {/* Main Form */}
-        {!accountGate && mode !== 'forgot' && (
+        {!accountGate && mode === 'login' && totpRequired && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1">
+                {useBackupCode ? 'Code de secours' : 'Code de vérification (application d’authentification)'}
+              </label>
+              <div className="relative">
+                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink/40" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder={useBackupCode ? 'XXXXX-XXXXX' : '123456'}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white/80 dark:bg-white/10 border border-black/10 dark:border-white/10 text-xs sm:text-sm text-ink font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-violet/20"
+                />
+              </div>
+              {errorMessage && <p className="text-[11px] text-red-500 mt-1.5">{errorMessage}</p>}
+              <button
+                type="button"
+                onClick={() => { setUseBackupCode((v) => !v); setTotpCode(''); setErrorMessage(''); }}
+                className="text-[11px] text-violet font-semibold hover:underline mt-1.5 block"
+              >
+                {useBackupCode ? 'Utiliser le code de l’application' : 'Utiliser un code de secours'}
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="btn-festive w-full py-3 text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-rose-brand/25 mt-2"
+            >
+              {isLoading ? <span>Vérification...</span> : <span>Valider</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTotpRequired(false); setTotpCode(''); setErrorMessage(''); }}
+              className="text-[11px] text-ink/50 hover:underline block mx-auto"
+            >
+              Retour
+            </button>
+          </form>
+        )}
+
+        {!accountGate && mode !== 'forgot' && !(mode === 'login' && totpRequired) && (
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
             <>

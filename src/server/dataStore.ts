@@ -54,7 +54,7 @@ type TableName =
   | 'api_keys' | 'webhooks' | 'webhook_deliveries';
 
 const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
-  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'admin_level', 'permissions', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'created_at', 'updated_at'] },
+  users: { primaryKey: 'id', columns: ['id', 'full_name', 'email', 'phone', 'password_hash', 'role', 'admin_level', 'permissions', 'status', 'is_super_admin', 'is_banned', 'status_reason', 'token_version', 'avatar_url', 'reset_password_token', 'reset_password_expires_at', 'totp_enabled', 'totp_secret', 'totp_backup_codes', 'created_at', 'updated_at'] },
   categories: { primaryKey: 'id', columns: ['id', 'name', 'slug', 'description', 'image_url', 'icon_name', 'commission_rate', 'is_active', 'created_at', 'updated_at'] },
   services: { primaryKey: 'id', columns: ['id', 'category_id', 'name', 'slug', 'description', 'short_description', 'price', 'currency', 'delay_label', 'image_url', 'is_available', 'is_featured', 'is_live_broadcast', 'created_at', 'updated_at'] },
   orders: { primaryKey: 'id', columns: ['id', 'order_number', 'client_id', 'service_id', 'category_id', 'recipient_name', 'recipient_phone', 'birthday_date', 'message', 'special_instructions', 'status', 'amount', 'currency', 'commission_rate', 'commission_amount', 'net_amount', 'delivered_at', 'created_at', 'updated_at'] },
@@ -97,7 +97,7 @@ function normalizeRow(row: Record<string, any>): Record<string, any> {
   for (const key of ['created_at', 'updated_at', 'paid_at', 'delivered_at', 'reset_password_expires_at', 'expires_at', 'revoked_at', 'last_seen_at', 'last_used_at', 'last_triggered_at']) {
     if (key in out && out[key] != null) out[key] = iso(out[key]);
   }
-  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned', 'success']) {
+  for (const key of ['is_active', 'is_available', 'is_featured', 'is_live_broadcast', 'is_read', 'is_super_admin', 'is_banned', 'success', 'totp_enabled']) {
     if (key in out) out[key] = Boolean(out[key]);
   }
   for (const key of ['price', 'amount', 'commission_rate', 'commission_amount', 'net_amount', 'rate']) {
@@ -137,6 +137,11 @@ class DataStore {
   // timestamp.
   lastBackupAt: string | null = null;
   passwords = new Map<string, string>();
+  // Comme `passwords` : jamais laissés sur l'objet utilisateur en mémoire
+  // (donc jamais sérialisables dans une réponse JSON par accident), pour la
+  // même raison que password_hash — voir installPersistenceProxies().
+  private totpSecrets = new Map<string, string>();
+  private totpBackupCodeHashes = new Map<string, string[]>();
   refreshTokens = new Map<string, { userId: string; expiresAt: Date }>();
 
   readonly pool: Pool;
@@ -246,9 +251,16 @@ class DataStore {
     }
 
     for (const user of this.users) {
-      const row = user as User & { password_hash?: string };
+      const row = user as User & { password_hash?: string; totp_secret?: string | null; totp_backup_codes?: string[] | null };
       if (row.password_hash) this.passwords.set(user.id, row.password_hash);
       delete row.password_hash;
+      if (row.totp_secret) this.totpSecrets.set(user.id, row.totp_secret);
+      delete row.totp_secret;
+      if (row.totp_backup_codes) {
+        const codes = typeof row.totp_backup_codes === 'string' ? JSON.parse(row.totp_backup_codes) : row.totp_backup_codes;
+        if (Array.isArray(codes) && codes.length) this.totpBackupCodeHashes.set(user.id, codes);
+      }
+      delete row.totp_backup_codes;
     }
 
     this.refreshTokens.clear();
@@ -516,6 +528,8 @@ class DataStore {
   async deleteUser(id: string): Promise<void> {
     await this.pool.execute('DELETE FROM `users` WHERE `id` = ?', [id]);
     this.passwords.delete(id);
+    this.totpSecrets.delete(id);
+    this.totpBackupCodeHashes.delete(id);
     this.users = this.wrapArray(this.users.filter((u) => u.id !== id), 'users');
   }
 
@@ -543,6 +557,26 @@ class DataStore {
     } else {
       this.siteSettings = { ...DEFAULT_SITE_SETTINGS };
     }
+  }
+
+  getTotpSecret(userId: string): string | undefined {
+    return this.totpSecrets.get(userId);
+  }
+
+  setTotpSecret(userId: string, secret: string | null) {
+    if (secret) this.totpSecrets.set(userId, secret);
+    else this.totpSecrets.delete(userId);
+    this.queue(() => this.updateById('users', userId, { totp_secret: secret }));
+  }
+
+  getTotpBackupCodeHashes(userId: string): string[] {
+    return this.totpBackupCodeHashes.get(userId) || [];
+  }
+
+  setTotpBackupCodeHashes(userId: string, hashes: string[] | null) {
+    if (hashes && hashes.length) this.totpBackupCodeHashes.set(userId, hashes);
+    else this.totpBackupCodeHashes.delete(userId);
+    this.queue(() => this.updateById('users', userId, { totp_backup_codes: hashes && hashes.length ? hashes : null }));
   }
 
   updateSiteSettings(partial: Partial<SiteSettings>) {

@@ -18,6 +18,7 @@ export interface User {
   role: UserRole;
   admin_level?: AdminLevel | null;
   permissions?: string[];
+  totp_enabled?: boolean;
   status: UserStatus;
   is_super_admin?: boolean;
   is_banned?: boolean;
@@ -593,4 +594,24 @@ export interface MaintenanceServiceCheck {
   api: { state: ServiceHealthState; detail: string };
   database: { state: ServiceHealthState; pingMs: number | null };
   externalServices: { name: string; configured: boolean }[];
+}
+
+// ---------------------------------------------------------------------------
+// Sécurité — voir src/server/routes/developer.ts (/security/overview,
+// /security/totp/setup|enable|disable), src/server/totp.ts. La 2FA se gère
+// uniquement sur le compte connecté (self-service), pas sur un autre compte.
+// ---------------------------------------------------------------------------
+
+export interface SecurityAlert {
+  level: 'warn' | 'error';
+  message: string;
+}
+
+export interface SecurityOverview {
+  totpEnabled: boolean;
+  activeSessionsCount: number;
+  failedLoginAttempts: number;
+  apiKeysCount: number;
+  lastLoginAt: string | null;
+  alerts: SecurityAlert[];
 }

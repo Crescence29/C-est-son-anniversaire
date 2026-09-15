@@ -13,6 +13,7 @@ import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
 import { collectMediaReferences, getMediaSummary, checkLinks, ALLOWED_FORMATS } from '../mediaAudit.ts';
+import { generateBase32Secret, buildOtpAuthUrl, verifyTotp, generateBackupCodes } from '../totp.ts';
 import crypto from 'crypto';
 
 const router = Router();
@@ -685,6 +686,148 @@ router.post('/maintenance/restart', (req: AuthRequest, res: Response): void => {
 });
 
 // ---------------------------------------------------------------------------
+// Sécurité — la 2FA est en libre-service sur le COMPTE CONNECTÉ uniquement
+// (comme changer son propre mot de passe, ce n'est pas une action qu'on fait
+// "sur" un autre compte). Le reste de cette section réutilise des données
+// déjà réelles ailleurs dans l'app (sessions, tentatives échouées, clés API)
+// pour donner une vue d'ensemble, plus une révocation de session individuelle
+// qui manquait jusqu'ici (le `sid` du JWT le permet depuis la correction du
+// compteur d'appareils actifs, seul le bouton manquait).
+// ---------------------------------------------------------------------------
+
+router.get('/security/overview', (req: AuthRequest, res: Response): void => {
+  const me = db.users.find((u) => u.id === req.user?.id);
+  const activeSessions = db.sessions.filter((s) => s.user_id === req.user?.id && !s.revoked_at);
+  const lastLogin = db.activityLogs.find((log) => log.actor_id === req.user?.id && log.action === 'login_success');
+
+  const recentFailedLogins = getLogs({ source: 'AuthService', level: 'warn' });
+  const failedByKey = new Map<string, number>();
+  for (const entry of recentFailedLogins) {
+    const key = entry.reference || 'inconnu';
+    failedByKey.set(key, (failedByKey.get(key) || 0) + 1);
+  }
+  const alerts: { level: 'warn' | 'error'; message: string }[] = [];
+  for (const [key, count] of failedByKey.entries()) {
+    if (count >= 5) alerts.push({ level: 'error', message: `${count} échecs d'authentification récents pour ${key}.` });
+  }
+
+  res.json({
+    totpEnabled: Boolean(me?.totp_enabled),
+    activeSessionsCount: activeSessions.length,
+    failedLoginAttempts: recentFailedLogins.length,
+    apiKeysCount: db.apiKeys.filter((k) => k.status === 'active').length,
+    lastLoginAt: lastLogin?.created_at || null,
+    alerts,
+  });
+});
+
+router.post('/security/totp/setup', (req: AuthRequest, res: Response): void => {
+  const me = db.users.find((u) => u.id === req.user?.id);
+  if (!me) {
+    res.status(404).json({ error: 'Compte introuvable.' });
+    return;
+  }
+  if (me.totp_enabled) {
+    res.status(400).json({ error: 'La double authentification est déjà activée.' });
+    return;
+  }
+
+  const secret = generateBase32Secret();
+  db.setTotpSecret(me.id, secret);
+  res.json({ secret, otpauthUrl: buildOtpAuthUrl(secret, me.email) });
+});
+
+router.post('/security/totp/enable', async (req: AuthRequest, res: Response): Promise<void> => {
+  const me = db.users.find((u) => u.id === req.user?.id);
+  if (!me) {
+    res.status(404).json({ error: 'Compte introuvable.' });
+    return;
+  }
+  const secret = db.getTotpSecret(me.id);
+  const { token } = req.body || {};
+  if (!secret) {
+    res.status(400).json({ error: "Aucune configuration en attente — relancez l'activation." });
+    return;
+  }
+  if (!token || !verifyTotp(String(token), secret)) {
+    res.status(400).json({ error: 'Code incorrect.' });
+    return;
+  }
+
+  const backupCodes = generateBackupCodes();
+  const hashes = await Promise.all(backupCodes.map((c) => bcrypt.hash(c, 10)));
+  db.setTotpBackupCodeHashes(me.id, hashes);
+  me.totp_enabled = true;
+  me.updated_at = new Date().toISOString();
+
+  db.logActivity({
+    actor_id: me.id,
+    actor_name: me.full_name,
+    actor_role: me.role,
+    action: 'totp_enabled',
+    details: 'Double authentification (2FA) activée.',
+    ip_address: req.ip,
+  });
+
+  res.json({ message: 'Double authentification activée.', backupCodes });
+});
+
+router.post('/security/totp/disable', async (req: AuthRequest, res: Response): Promise<void> => {
+  const me = db.users.find((u) => u.id === req.user?.id);
+  if (!me) {
+    res.status(404).json({ error: 'Compte introuvable.' });
+    return;
+  }
+  const { password } = req.body || {};
+  const storedHash = db.passwords.get(me.id);
+  if (!storedHash || !password || !(await bcrypt.compare(password, storedHash))) {
+    res.status(401).json({ error: 'Mot de passe incorrect.' });
+    return;
+  }
+
+  db.setTotpSecret(me.id, null);
+  db.setTotpBackupCodeHashes(me.id, null);
+  me.totp_enabled = false;
+  me.updated_at = new Date().toISOString();
+
+  db.logActivity({
+    actor_id: me.id,
+    actor_name: me.full_name,
+    actor_role: me.role,
+    action: 'totp_disabled',
+    details: 'Double authentification (2FA) désactivée.',
+    ip_address: req.ip,
+  });
+
+  res.json({ message: 'Double authentification désactivée.' });
+});
+
+router.post('/accounts/:id/sessions/:sessionId/revoke', (req: AuthRequest, res: Response): void => {
+  const user = findAnyAccount(req.params.id, res);
+  if (!user) return;
+  const session = db.sessions.find((s) => s.id === req.params.sessionId && s.user_id === user.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session introuvable.' });
+    return;
+  }
+
+  db.revokeSession(session.id);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'session_revoked',
+    target_type: 'user',
+    target_id: user.id,
+    details: `Session (${session.device_label || 'appareil inconnu'}) révoquée pour ${user.full_name}.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: 'Session révoquée.' });
+});
+
+// ---------------------------------------------------------------------------
 // Comptes : le développeur voit tous les comptes (client compris), mais les
 // actions de gestion (créer, changer de rôle, permissions, statut, accès)
 // restent réservées aux comptes internes (staff/admin) — la structure des
@@ -702,6 +845,7 @@ function toAccountSummary(u: (typeof db.users)[number]) {
     role: u.role,
     admin_level: u.admin_level ?? null,
     permissions: u.permissions ?? [],
+    totp_enabled: Boolean(u.totp_enabled),
     status: u.status,
     status_reason: u.status_reason ?? null,
     last_login_at: lastLogin?.created_at ?? null,

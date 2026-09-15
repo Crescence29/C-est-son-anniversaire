@@ -8,7 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   notifications: Notification[];
   unreadNotifsCount: number;
-  login: (email: string, pass: string) => Promise<User>;
+  login: (email: string, pass: string, totpToken?: string, backupCode?: string) => Promise<User>;
   register: (name: string, email: string, phone: string, pass: string) => Promise<User>;
   logout: () => void;
   refreshUserData: () => Promise<void>;
@@ -59,10 +59,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     fetchCurrentUser();
   }, [token]);
 
-  const login = async (email: string, pass: string): Promise<User> => {
+  const login = async (email: string, pass: string, totpToken?: string, backupCode?: string): Promise<User> => {
     const res = await api.post<{ user: User; token: string }>('/auth/login', {
       email,
       password: pass,
+      ...(totpToken ? { totpToken } : {}),
+      ...(backupCode ? { backupCode } : {}),
     });
     localStorage.setItem('csa_auth_token', res.token);
     setToken(res.token);
