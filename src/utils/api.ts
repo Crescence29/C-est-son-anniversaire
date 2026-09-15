@@ -29,6 +29,9 @@ export async function apiRequest<T = any>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 503 && data?.error === 'maintenance') {
+      window.dispatchEvent(new CustomEvent('app:maintenance', { detail: { message: data.message } }));
+    }
     const errorMsg = data?.error || data?.message || `Erreur ${response.status}`;
     const error = new Error(errorMsg) as Error & { banned?: boolean; suspended?: boolean; reason?: string | null };
     if (data?.banned) error.banned = true;

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ThemeProvider } from './context/ThemeContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { MobileTabBar } from './components/MobileTabBar.tsx';
 import { Footer } from './components/Footer.tsx';
+import { MaintenancePage } from './components/MaintenancePage.tsx';
 
 import { HomePage } from './pages/HomePage.tsx';
 import { CatalogPage } from './pages/CatalogPage.tsx';
@@ -27,6 +28,25 @@ const MainApp: React.FC = () => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onMaintenance = (e: Event) => {
+      setMaintenanceMessage((e as CustomEvent<{ message: string }>).detail.message);
+    };
+    window.addEventListener('app:maintenance', onMaintenance);
+    return () => window.removeEventListener('app:maintenance', onMaintenance);
+  }, []);
+
+  // Le développeur garde un accès complet (connexion + tableau de bord
+  // développeur) pour pouvoir désactiver la maintenance lui-même — voir
+  // src/server/maintenanceMode.ts, qui laisse passer /api/developer côté API.
+  // La page de connexion reste aussi accessible, pour que le développeur
+  // puisse justement se connecter pendant la maintenance.
+  const maintenanceBypassed = user?.role === 'developer' || currentView === 'login' || currentView === 'register';
+  if (maintenanceMessage && !maintenanceBypassed) {
+    return <MaintenancePage message={maintenanceMessage} />;
+  }
 
   const navigateTo = (view: string, param?: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
