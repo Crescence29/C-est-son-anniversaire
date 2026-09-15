@@ -73,6 +73,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   system_backup_created: DatabaseBackup,
   database_integrity_check: Database,
   media_orphans_cleaned: Trash2,
+  deployment: Rocket,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -90,6 +91,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   system_backup_created: 'Sauvegarde technique déclenchée',
   database_integrity_check: 'Vérification d’intégrité de la base lancée',
   media_orphans_cleaned: 'Références médias orphelines nettoyées',
+  deployment: 'Nouveau déploiement',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -1090,7 +1092,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                     </div>
                     {deployment.currentVersion.commitMessage && (
                       <p className="text-xs mb-1" style={{ color: 'var(--dd-ink-soft)' }}>
-                        « {deployment.currentVersion.commitMessage} »{deployment.currentVersion.commitAuthor ? ` — ${deployment.currentVersion.commitAuthor}` : ''}
+                        « {deployment.currentVersion.commitMessage} »
                       </p>
                     )}
                     <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>
@@ -1131,15 +1133,15 @@ export const DeveloperDashboardPage: React.FC = () => {
                     Historique des versions ({deployment.history.length})
                   </h3>
                   {deployment.history.length === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Historique indisponible (généré au moment du build).</p>
+                    <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>Aucun déploiement enregistré pour l'instant.</p>
                   ) : (
                     <div className="space-y-1.5 max-h-80 overflow-y-auto">
-                      {deployment.history.map((c) => (
-                        <div key={c.sha} className="flex items-start gap-3 px-3 py-2 rounded-xl text-xs" style={{ background: c.isCurrent ? 'var(--dd-accent-soft)' : 'var(--dd-panel-hover)' }}>
-                          <span className="font-mono font-bold shrink-0" style={{ color: c.isCurrent ? 'var(--dd-accent)' : 'var(--dd-ink-faint)' }}>#{c.shortSha}</span>
+                      {deployment.history.map((c, i) => (
+                        <div key={`${c.sha}-${i}`} className="flex items-start gap-3 px-3 py-2 rounded-xl text-xs" style={{ background: c.isCurrent ? 'var(--dd-accent-soft)' : 'var(--dd-panel-hover)' }}>
+                          <span className="font-mono font-bold shrink-0" style={{ color: c.isCurrent ? 'var(--dd-accent)' : 'var(--dd-ink-faint)' }}>#{c.sha}</span>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate" style={{ color: 'var(--dd-ink)' }}>{c.message}</div>
-                            <div className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>{c.author} · {new Date(c.date).toLocaleString('fr-FR')}</div>
+                            <div className="truncate" style={{ color: 'var(--dd-ink)' }}>{c.message || 'Sans message'}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>{new Date(c.deployedAt).toLocaleString('fr-FR')}</div>
                           </div>
                           {c.isCurrent && <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--dd-accent)', color: '#000' }}>Production</span>}
                         </div>

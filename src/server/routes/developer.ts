@@ -13,7 +13,6 @@ import { describeDevice } from '../utils/userAgent.ts';
 import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
 import { collectMediaReferences, getMediaSummary, checkLinks, ALLOWED_FORMATS } from '../mediaAudit.ts';
-import { getDeployInfo } from '../deployInfo.ts';
 import crypto from 'crypto';
 
 const router = Router();
@@ -430,30 +429,44 @@ router.post('/media/cleanup-orphan-references', (req: AuthRequest, res: Response
 });
 
 // ---------------------------------------------------------------------------
-// Déploiement et versions — le commit réellement déployé (capturé au
-// moment du build, voir src/server/deployInfo.ts) et les derniers commits
-// comme historique réel. Pas de rollback automatique depuis ce tableau de
-// bord : un redéploiement vers une version antérieure se fait volontairement
-// à la main (bouton « Redeploy » sur un déploiement passé dans le tableau
-// de bord Railway, ou `git revert` + nouveau déploiement) pour ne jamais
-// couper la production sur un simple clic sans confirmation humaine complète.
+// Déploiement et versions — Railway ne déploie pas ici via son intégration
+// Git (le service est redéployé depuis la source uploadée, sans .git dans le
+// conteneur), donc aucune variable RAILWAY_GIT_* n'est disponible pour
+// retrouver le commit réellement en ligne. À la place : avant chaque
+// déploiement, GIT_COMMIT_SHA / GIT_COMMIT_MESSAGE / GIT_COMMIT_AUTHOR sont
+// positionnées comme variables Railway, et le serveur enregistre un
+// événement d'activité 'deployment' à chaque démarrage sur un nouveau commit
+// (voir server.ts) — un historique réel et durable (stocké en base), pas une
+// valeur simulée. Pas de rollback automatique depuis ce tableau de bord : un
+// redéploiement vers une version antérieure reste volontairement manuel
+// (bouton « Redeploy » sur un déploiement passé dans le tableau de bord
+// Railway, ou `git revert` + nouveau déploiement) pour ne jamais couper la
+// production sur un simple clic sans confirmation humaine complète.
 // ---------------------------------------------------------------------------
 
 router.get('/deployment/info', (req: AuthRequest, res: Response): void => {
-  const deployInfo = getDeployInfo();
   const metrics = getMetricsSnapshot();
   const railwayEnvironment = process.env.RAILWAY_ENVIRONMENT_NAME || null;
   const railwayService = process.env.RAILWAY_SERVICE_NAME || null;
 
+  const deployEvents = db.activityLogs
+    .filter((a) => a.action === 'deployment')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const current = deployEvents[0];
+
   res.json({
     currentVersion: {
       appVersion: getAppVersion(),
-      commitSha: deployInfo.headShort || null,
-      commitMessage: deployInfo.commits[0]?.message || null,
-      commitAuthor: deployInfo.commits[0]?.author || null,
-      deployedAt: metrics.serverStartedAt,
+      commitSha: current?.target_id || process.env.GIT_COMMIT_SHA || null,
+      commitMessage: current?.details || null,
+      deployedAt: current?.created_at || metrics.serverStartedAt,
     },
-    history: deployInfo.commits.map((c, i) => ({ ...c, isCurrent: i === 0 })),
+    history: deployEvents.map((e, i) => ({
+      sha: e.target_id || 'inconnu',
+      message: e.details || null,
+      deployedAt: e.created_at,
+      isCurrent: i === 0,
+    })),
     environments: [
       {
         key: 'development',

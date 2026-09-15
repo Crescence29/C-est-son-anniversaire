@@ -509,18 +509,19 @@ export interface MediaLinkCheckResult extends MediaReference {
 }
 
 // ---------------------------------------------------------------------------
-// Déploiement et versions — voir src/server/deployInfo.ts et
-// src/server/routes/developer.ts (/deployment/info). Le commit et
-// l'historique sont réels (capturés au moment du build) ; il n'y a pas de
-// rollback automatique par sécurité.
+// Déploiement et versions — voir src/server/routes/developer.ts
+// (/deployment/info). Le commit réellement déployé est fourni via des
+// variables Railway positionnées juste avant chaque redéploiement
+// (GIT_COMMIT_SHA/MESSAGE/AUTHOR) et l'historique est enregistré durablement
+// en base (journal d'activité, action 'deployment') à chaque démarrage sur
+// un nouveau commit — pas de valeur simulée. Pas de rollback automatique par
+// sécurité.
 // ---------------------------------------------------------------------------
 
 export interface DeployCommitEntry {
   sha: string;
-  shortSha: string;
-  date: string;
-  author: string;
-  message: string;
+  message: string | null;
+  deployedAt: string;
   isCurrent: boolean;
 }
 
@@ -537,7 +538,6 @@ export interface DeploymentInfo {
     appVersion: string;
     commitSha: string | null;
     commitMessage: string | null;
-    commitAuthor: string | null;
     deployedAt: string;
   };
   history: DeployCommitEntry[];

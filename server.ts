@@ -80,6 +80,25 @@ async function startServer() {
   // MySQL must be ready before any API route can execute.
   await db.ready;
 
+  // Historique de déploiement réel : GIT_COMMIT_SHA/MESSAGE/AUTHOR sont
+  // positionnées comme variables Railway juste avant chaque redéploiement
+  // (le conteneur n'a pas de .git, donc aucune RAILWAY_GIT_* n'est
+  // disponible ici pour le savoir autrement). N'enregistre un nouvel
+  // événement que si le commit a changé, pour qu'un simple redémarrage du
+  // conteneur (sans nouveau déploiement) ne duplique pas l'historique.
+  const deployedCommitSha = process.env.GIT_COMMIT_SHA;
+  if (deployedCommitSha && !db.activityLogs.some((a) => a.action === 'deployment' && a.target_id === deployedCommitSha)) {
+    const message = process.env.GIT_COMMIT_MESSAGE;
+    const author = process.env.GIT_COMMIT_AUTHOR;
+    db.logActivity({
+      actor_name: 'Système',
+      action: 'deployment',
+      target_type: 'commit',
+      target_id: deployedCommitSha,
+      details: message ? `${message}${author ? ` — ${author}` : ''}` : undefined,
+    });
+  }
+
   // Ensure array-based legacy route mutations are persisted before JSON responses are sent.
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
