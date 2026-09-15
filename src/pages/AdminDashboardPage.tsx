@@ -9,6 +9,7 @@ import { DevSidebar, DevNavGroup } from '../components/dev-dashboard/DevSidebar.
 import { DevTopbar } from '../components/dev-dashboard/DevTopbar.tsx';
 import { KpiCard } from '../components/dev-dashboard/KpiCard.tsx';
 import { ServiceStatusCard } from '../components/dev-dashboard/ServiceStatusCard.tsx';
+import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel.tsx';
 import { SkeletonCard } from '../components/dev-dashboard/SkeletonCard.tsx';
 import {
   Shield,
@@ -39,6 +40,7 @@ import {
   Ban,
   KeyRound,
   Copy,
+  DatabaseBackup as DatabaseBackupIcon,
 } from 'lucide-react';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -58,6 +60,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   support_message_replied: Send,
   profile_updated: UserPlus,
   password_reset_by_admin: KeyRound,
+  system_backup_created: DatabaseBackupIcon,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -77,6 +80,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   support_message_replied: 'Réponse envoyée à un client',
   profile_updated: 'Profil personnel modifié',
   password_reset_by_admin: 'Mot de passe réinitialisé par le développeur',
+  system_backup_created: 'Sauvegarde manuelle déclenchée',
 };
 
 export const AdminDashboardPage: React.FC = () => {
@@ -203,6 +207,28 @@ export const AdminDashboardPage: React.FC = () => {
 
   const refreshState = useRefreshProgress();
   const activityRefreshState = useRefreshProgress();
+
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const handleBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      const res = await api.post<{ backup: unknown }>('/admin/system-backup');
+      const blob = new Blob([JSON.stringify(res.backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.href = url;
+      link.download = `sauvegarde-cest-son-anniversaire-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la sauvegarde.');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
 
   useEffect(() => {
     fetchAdminData().catch(() => {});
@@ -1321,6 +1347,8 @@ export const AdminDashboardPage: React.FC = () => {
       {/* TAB 5: DEVELOPER - LOGO IDENTITY + ACTIVITY LOG */}
       {isSuperAdmin && activeTab === 'developer' && (
         <div className="space-y-6">
+          <SystemStatusPanel onBackup={handleBackup} isBackingUp={isBackingUp} />
+
           {/* Identité visuelle (logo) */}
           <div className="glass-card rounded-2xl p-6 border border-gold-brand/30 space-y-4">
             <div>

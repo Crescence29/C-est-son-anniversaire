@@ -290,3 +290,36 @@ export interface ClientDashboardStats {
   favoritesCount: number;
   unreadNotificationsCount: number;
 }
+
+export type ServiceHealthState = 'ok' | 'degraded' | 'down' | 'unknown';
+
+export interface SystemStatusService {
+  name: string;
+  state: ServiceHealthState;
+  detail?: string;
+}
+
+export interface SystemStatusError {
+  message: string;
+  path: string;
+  at: string;
+}
+
+export interface SystemStatus {
+  serverState: ServiceHealthState;
+  apiState: ServiceHealthState;
+  databaseState: ServiceHealthState;
+  databasePingMs: number | null;
+  avgResponseTimeMs: number;
+  requestCount: number;
+  recentErrors: SystemStatusError[];
+  connectedUsersCount: number;
+  appVersion: string;
+  lastDeployAt: string;
+  lastBackupAt: string | null;
+  uptimeSeconds: number;
+  disk: { usedPercent: number; totalGB: number; usedGB: number } | null;
+  memory: { usedPercent: number; totalMB: number; usedMB: number };
+  cpuLoadPercent: number | null;
+  services: SystemStatusService[];
+}

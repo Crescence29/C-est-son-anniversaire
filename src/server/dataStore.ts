@@ -110,6 +110,12 @@ class DataStore {
   faqItems: FaqItem[] = [];
   supportMessages: SupportMessage[] = [];
   siteSettings: SiteSettings = { ...DEFAULT_SITE_SETTINGS };
+  // Kept out of `siteSettings` on purpose: that object is served publicly by
+  // GET /api/settings for the homepage CMS content, and backup timing isn't
+  // public information. Stored under its own row (id='system') in the same
+  // generic key/JSON table instead of adding a dedicated migration for one
+  // timestamp.
+  lastBackupAt: string | null = null;
   passwords = new Map<string, string>();
   refreshTokens = new Map<string, { userId: string; expiresAt: Date }>();
 
@@ -194,6 +200,14 @@ class DataStore {
       this.siteSettings = { ...DEFAULT_SITE_SETTINGS, ...stored };
     } else {
       this.siteSettings = { ...DEFAULT_SITE_SETTINGS };
+    }
+
+    const [systemMetaRows] = await connection.query<RowDataPacket[]>(
+      "SELECT data FROM `site_settings` WHERE id = 'system'"
+    );
+    if (systemMetaRows.length > 0) {
+      const stored = typeof systemMetaRows[0].data === 'string' ? JSON.parse(systemMetaRows[0].data) : systemMetaRows[0].data;
+      this.lastBackupAt = stored?.last_backup_at ?? null;
     }
 
     for (const user of this.users) {
@@ -412,6 +426,17 @@ class DataStore {
     this.queue(() =>
       this.pool.execute(
         "INSERT INTO `site_settings` (id, data) VALUES ('main', ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
+        [JSON.stringify(snapshot)]
+      )
+    );
+  }
+
+  recordBackup() {
+    this.lastBackupAt = new Date().toISOString();
+    const snapshot = { last_backup_at: this.lastBackupAt };
+    this.queue(() =>
+      this.pool.execute(
+        "INSERT INTO `site_settings` (id, data) VALUES ('system', ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
         [JSON.stringify(snapshot)]
       )
     );

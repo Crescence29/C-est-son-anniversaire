@@ -20,6 +20,7 @@ import settingsRouter from './src/server/routes/settings.ts';
 import faqRouter from './src/server/routes/faq.ts';
 import supportRouter from './src/server/routes/support.ts';
 import { db } from './src/server/dataStore.ts';
+import { recordRequest, recordTiming, recordError } from './src/server/metrics.ts';
 
 async function startServer() {
   const app = express();
@@ -51,6 +52,17 @@ async function startServer() {
   );
   app.use(express.json());
 
+  // Metrics for the developer system-status panel: request volume, response
+  // time, and any request that ends in a 5xx (recorded from the body's
+  // `error` field, since routes reply with res.status(500).json({error})
+  // directly rather than throwing into a shared error handler).
+  app.use((req, res, next) => {
+    recordRequest();
+    const startedAt = Date.now();
+    res.on('finish', () => recordTiming(Date.now() - startedAt));
+    next();
+  });
+
   // MySQL must be ready before any API route can execute.
   await db.ready;
 
@@ -58,11 +70,16 @@ async function startServer() {
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = ((body: unknown) => {
+      if (res.statusCode >= 500) {
+        const message = (body && typeof body === 'object' && 'error' in body ? String((body as { error?: unknown }).error) : null) || 'Erreur serveur';
+        recordError(message, req.originalUrl);
+      }
       db.flush()
         .then(() => originalJson(body))
         .catch((error) => {
           console.error('[MySQL] Impossible de finaliser les écritures:', error);
           if (!res.headersSent) res.status(500);
+          recordError(error?.message || 'Échec de persistance', req.originalUrl);
           originalJson({ error: 'Erreur de persistance en base de données.' });
         });
       return res;
@@ -89,6 +106,20 @@ async function startServer() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/faq', faqRouter);
   app.use('/api/support-messages', supportRouter);
+
+  // Catches anything a route threw instead of handling itself (routes here
+  // normally reply with res.status(500).json(...) directly, which the
+  // res.json override above already records — this is the fallback for the
+  // rare case something throws past that).
+  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    console.error('[Server] Erreur non gérée:', err);
+    recordError(err.message || 'Erreur non gérée', req.originalUrl);
+    res.status(500).json({ error: 'Erreur interne du serveur.' });
+  });
 
   // Vite middleware for development vs Static files for production
   if (process.env.NODE_ENV !== 'production') {
