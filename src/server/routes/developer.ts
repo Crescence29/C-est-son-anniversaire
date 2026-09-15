@@ -210,8 +210,10 @@ router.post('/system-backup', (req: AuthRequest, res: Response): void => {
 });
 
 // ---------------------------------------------------------------------------
-// Gestion de la structure des comptes internes (staff / admin uniquement —
-// jamais les comptes clients, jamais leurs commandes).
+// Comptes : le développeur voit tous les comptes (client compris), mais les
+// actions de gestion (créer, changer de rôle, permissions, statut, accès)
+// restent réservées aux comptes internes (staff/admin) — la structure des
+// rôles ne concerne pas les comptes clients.
 // ---------------------------------------------------------------------------
 
 function toAccountSummary(u: (typeof db.users)[number]) {
@@ -235,9 +237,16 @@ function toAccountSummary(u: (typeof db.users)[number]) {
 }
 
 // GET /api/developer/accounts
+// Visibilité complète (client compris) sur demande explicite du client :
+// le développeur doit tout voir. Seuls les comptes 'developer' restent
+// hors de cette liste (rien à gérer sur soi-même ici). Les actions de
+// gestion plus bas (créer, changer de rôle, suspendre, réinitialiser...)
+// restent volontairement limitées aux comptes internes (staff/admin) :
+// "gérer la structure des comptes" ne veut pas dire agir sur les comptes
+// clients, seulement pouvoir les consulter.
 router.get('/accounts', (req: AuthRequest, res: Response): void => {
   const accounts = db.users
-    .filter((u) => INTERNAL_ROLES.includes(u.role))
+    .filter((u) => u.role !== 'developer')
     .map(toAccountSummary);
   res.json({ accounts });
 });
@@ -307,6 +316,17 @@ function findInternalAccount(id: string, res: Response) {
   const user = db.users.find((u) => u.id === id && INTERNAL_ROLES.includes(u.role));
   if (!user) {
     res.status(404).json({ error: 'Compte interne introuvable.' });
+    return null;
+  }
+  return user;
+}
+
+// Pour les endpoints en lecture seule uniquement (voir un compte, voir ses
+// sessions) : tout compte hors 'developer' est consultable.
+function findAnyAccount(id: string, res: Response) {
+  const user = db.users.find((u) => u.id === id && u.role !== 'developer');
+  if (!user) {
+    res.status(404).json({ error: 'Compte introuvable.' });
     return null;
   }
   return user;
@@ -459,7 +479,7 @@ router.put('/accounts/:id/reset-access', async (req: AuthRequest, res: Response)
 
 // GET /api/developer/accounts/:id/sessions
 router.get('/accounts/:id/sessions', (req: AuthRequest, res: Response): void => {
-  const user = findInternalAccount(req.params.id, res);
+  const user = findAnyAccount(req.params.id, res);
   if (!user) return;
 
   const sessions = db.sessions

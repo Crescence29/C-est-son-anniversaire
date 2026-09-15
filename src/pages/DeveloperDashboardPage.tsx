@@ -421,7 +421,7 @@ export const DeveloperDashboardPage: React.FC = () => {
                 style={{ background: 'var(--dd-accent-soft)', borderColor: 'var(--dd-accent)', color: 'var(--dd-accent)' }}
               >
                 <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>Uniquement les comptes internes (staff / admin). Les comptes clients et leurs commandes ne sont ni visibles ni gérables ici.</p>
+                <p>Tous les comptes sont listés ici, y compris les clients (en lecture seule). Les actions de gestion — rôle, permissions, statut, accès, déconnexion forcée — restent réservées aux comptes internes (staff / admin) ; le contenu des commandes reste hors de portée.</p>
               </div>
 
               <div className="flex justify-end">
@@ -459,37 +459,47 @@ export const DeveloperDashboardPage: React.FC = () => {
                       {accountsLoading ? (
                         <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--dd-ink-faint)' }}>Chargement...</td></tr>
                       ) : accounts.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--dd-ink-faint)' }}>Aucun compte interne pour le moment.</td></tr>
+                        <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--dd-ink-faint)' }}>Aucun compte pour le moment.</td></tr>
                       ) : (
-                        accounts.map((a) => (
+                        accounts.map((a) => {
+                          const isInternal = a.role === 'staff' || a.role === 'admin';
+                          return (
                           <tr key={a.id} className="border-b last:border-0" style={{ borderColor: 'var(--dd-border)' }}>
                             <td className="px-4 py-3">
                               <p className="font-semibold" style={{ color: 'var(--dd-ink)' }}>{a.full_name}</p>
                               <p className="font-mono text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>{a.email}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <select
-                                value={a.role}
-                                onChange={(e) => handleSetRole(a, e.target.value as UserRole, a.admin_level)}
-                                className="text-[11px] rounded-lg px-2 py-1 font-semibold"
-                                style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
-                              >
-                                <option value="staff">Staff</option>
-                                <option value="admin">Admin</option>
-                              </select>
+                              {isInternal ? (
+                                <select
+                                  value={a.role}
+                                  onChange={(e) => handleSetRole(a, e.target.value as UserRole, a.admin_level)}
+                                  className="text-[11px] rounded-lg px-2 py-1 font-semibold"
+                                  style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                                >
+                                  <option value="staff">Staff</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                              ) : (
+                                <span className="text-[11px] font-semibold" style={{ color: 'var(--dd-ink-soft)' }}>Client</span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
-                              <select
-                                value={a.admin_level || ''}
-                                onChange={(e) => handleSetRole(a, a.role, (e.target.value || null) as AdminLevel | null)}
-                                className="text-[11px] rounded-lg px-2 py-1"
-                                style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
-                              >
-                                <option value="">—</option>
-                                {(Object.keys(ADMIN_LEVEL_LABEL) as AdminLevel[]).map((lvl) => (
-                                  <option key={lvl} value={lvl}>{ADMIN_LEVEL_LABEL[lvl]}</option>
-                                ))}
-                              </select>
+                              {isInternal ? (
+                                <select
+                                  value={a.admin_level || ''}
+                                  onChange={(e) => handleSetRole(a, a.role, (e.target.value || null) as AdminLevel | null)}
+                                  className="text-[11px] rounded-lg px-2 py-1"
+                                  style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                                >
+                                  <option value="">—</option>
+                                  {(Object.keys(ADMIN_LEVEL_LABEL) as AdminLevel[]).map((lvl) => (
+                                    <option key={lvl} value={lvl}>{ADMIN_LEVEL_LABEL[lvl]}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span style={{ color: 'var(--dd-ink-faint)' }}>—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <span
@@ -510,23 +520,28 @@ export const DeveloperDashboardPage: React.FC = () => {
                               </button>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <button onClick={() => setPermissionsModalFor(a)} title="Permissions" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => handleResetAccess(a)} title="Réinitialiser l’accès" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                  <KeyRound className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => handleToggleStatus(a)} title={a.status === 'active' ? 'Désactiver' : 'Réactiver'} className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                  <BanIcon className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => handleForceLogout(a)} title="Forcer la déconnexion" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                  <LogIn className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              {isInternal ? (
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button onClick={() => setPermissionsModalFor(a)} title="Permissions" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleResetAccess(a)} title="Réinitialiser l’accès" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                    <KeyRound className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleToggleStatus(a)} title={a.status === 'active' ? 'Désactiver' : 'Réactiver'} className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                    <BanIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleForceLogout(a)} title="Forcer la déconnexion" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                    <LogIn className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>Lecture seule</span>
+                              )}
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
