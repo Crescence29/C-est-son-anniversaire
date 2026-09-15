@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
-  Monitor, X, Plus, CheckCircle2, LogIn, UserPlus, Shield, ShieldAlert,
+  Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -177,6 +177,17 @@ export const DeveloperDashboardPage: React.FC = () => {
       if (sessionsModalFor?.id === account.id) openSessions(account);
     } catch (err: any) {
       alert(err?.message || 'Erreur lors de la déconnexion forcée.');
+    }
+  };
+
+  const handleImpersonate = async (account: InternalAccount) => {
+    if (!window.confirm(`Vous connecter directement sur le compte de ${account.full_name} (${account.email}) ? Votre session développeur actuelle sera remplacée dans cet onglet.`)) return;
+    try {
+      const res = await api.post<{ token: string }>(`/developer/accounts/${account.id}/impersonate`);
+      localStorage.setItem('csa_auth_token', res.token);
+      window.location.href = '/';
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la connexion directe.');
     }
   };
 
@@ -522,24 +533,32 @@ export const DeveloperDashboardPage: React.FC = () => {
                               </button>
                             </td>
                             <td className="px-4 py-3">
-                              {isInternal ? (
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <button onClick={() => setPermissionsModalFor(a)} title="Permissions" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                    <ShieldCheck className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button onClick={() => handleResetAccess(a)} title="Réinitialiser l’accès" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                    <KeyRound className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button onClick={() => handleToggleStatus(a)} title={a.status === 'active' ? 'Désactiver' : 'Réactiver'} className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
-                                    <BanIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button onClick={() => handleForceLogout(a)} title="Forcer la déconnexion" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isInternal && (
+                                  <>
+                                    <button onClick={() => setPermissionsModalFor(a)} title="Permissions" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => handleResetAccess(a)} title="Réinitialiser l’accès" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                      <KeyRound className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => handleToggleStatus(a)} title={a.status === 'active' ? 'Désactiver' : 'Réactiver'} className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                      <BanIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => handleForceLogout(a)} title="Forcer la déconnexion" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                                      <LogOut className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                                {a.id !== currentUser?.id && (
+                                  <button onClick={() => handleImpersonate(a)} title="Se connecter directement sur ce compte" className="p-1.5 rounded-lg" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
                                     <LogIn className="w-3.5 h-3.5" />
                                   </button>
-                                </div>
-                              ) : (
-                                <span className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>Lecture seule</span>
-                              )}
+                                )}
+                                {!isInternal && a.id === currentUser?.id && (
+                                  <span className="text-[10px]" style={{ color: 'var(--dd-ink-faint)' }}>Vous</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                           );

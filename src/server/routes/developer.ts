@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { db } from '../dataStore.ts';
-import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.ts';
+import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole } from '../../types.ts';
 import { getMetricsSnapshot } from '../metrics.ts';
 
@@ -510,6 +510,37 @@ router.post('/accounts/:id/force-logout', (req: AuthRequest, res: Response): voi
   });
 
   res.json({ message: `${user.full_name} a été déconnecté de tous ses appareils.` });
+});
+
+// POST /api/developer/accounts/:id/impersonate
+// Connexion directe sur n'importe quel compte, sans mot de passe — un accès
+// puissant, donc toujours journalisé explicitement (qui, sur quel compte,
+// quand). Fonctionne sur tous les rôles (client compris), à la différence
+// des actions de gestion ci-dessus qui restent limitées aux comptes internes.
+router.post('/accounts/:id/impersonate', (req: AuthRequest, res: Response): void => {
+  const user = findAnyAccount(req.params.id, res);
+  if (!user) return;
+
+  if (user.id === req.user?.id) {
+    res.status(400).json({ error: 'Vous êtes déjà connecté sur ce compte.' });
+    return;
+  }
+
+  const token = generateToken(user);
+  const refreshToken = generateRefreshToken(user);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'developer_impersonation',
+    target_type: 'user',
+    target_id: user.id,
+    details: `Le développeur s'est connecté directement sur le compte de ${user.full_name} (${user.email}, rôle ${user.role}).`,
+    ip_address: req.ip,
+  });
+
+  res.json({ message: `Connexion en tant que ${user.full_name}.`, token, refreshToken, user });
 });
 
 // ---------------------------------------------------------------------------
