@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../dataStore.ts';
 import { User, UserRole } from '../../types.ts';
+import { recordLog } from '../logs.ts';
 
 // En production, un secret par défaut prévisible permettrait de forger des
 // tokens (y compris "role: admin") : on préfère arrêter le serveur plutôt
@@ -86,7 +87,13 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
 
     req.user = user;
     next();
-  } catch {
+  } catch (error: any) {
+    // Distingue une expiration normale (7 jours) d'un jeton réellement
+    // invalide (secret différent, altéré) — sans ça, un déconnexion
+    // inattendue signalée par un utilisateur est impossible à diagnostiquer
+    // après coup.
+    const reason = error?.name === 'TokenExpiredError' ? 'expiré' : error?.name || 'invalide';
+    recordLog('warn', 'AuthService', `Jeton rejeté (${reason})`, req.originalUrl);
     res.status(403).json({ error: 'Token invalide ou expiré.' });
   }
 }
