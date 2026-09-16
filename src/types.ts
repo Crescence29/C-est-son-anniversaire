@@ -367,9 +367,23 @@ export interface SystemStatus {
   lastDeployAt: string;
   lastBackupAt: string | null;
   uptimeSeconds: number;
-  disk: { usedPercent: number; totalGB: number; usedGB: number } | null;
-  memory: { usedPercent: number; totalMB: number; usedMB: number };
+  // `disk` mesure ce que l'application occupe réellement (code +
+  // dépendances) : le disque du conteneur est un volume partagé avec
+  // d'autres conteneurs sur la même machine Railway, sans quota par
+  // conteneur fiable à lire — voir src/server/containerResources.ts.
+  disk: { appUsedMB: number } | null;
+  memory: {
+    usedPercent: number;
+    totalMB: number;
+    usedMB: number;
+    source: 'cgroup' | 'host';
+    processRssMB: number;
+    processHeapUsedMB: number;
+    processHeapTotalMB: number;
+  };
   cpuLoadPercent: number | null;
+  cpuAllocated: number | null;
+  cpuSource: 'cgroup' | 'host' | 'unknown';
   services: SystemStatusService[];
 }
 

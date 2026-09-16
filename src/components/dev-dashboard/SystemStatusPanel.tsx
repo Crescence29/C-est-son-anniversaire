@@ -42,22 +42,29 @@ function barColor(percent: number): string {
   return 'bg-emerald-400';
 }
 
-const UsageBar: React.FC<{ label: string; icon: React.ElementType; percent: number | null; detail: string }> = ({ label, icon: Icon, percent, detail }) => (
-  <div className="space-y-1.5">
-    <div className="flex items-center justify-between">
-      <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--dd-ink-soft)' }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: 'var(--dd-accent)' }} />
-        {label}
-      </span>
-      <span className="text-[11px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{detail}</span>
-    </div>
-    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--dd-border)' }}>
-      {percent !== null && (
-        <div className={`h-full rounded-full ${barColor(percent)}`} style={{ width: `${Math.min(100, percent)}%` }} />
-      )}
-    </div>
-  </div>
-);
+const UsageBar: React.FC<{ label: string; icon: React.ElementType; percent: number | null; detail: string; onClick?: () => void }> = ({ label, icon: Icon, percent, detail, onClick }) => {
+  const Wrapper: React.ElementType = onClick ? 'button' : 'div';
+  return (
+    <Wrapper
+      onClick={onClick}
+      className={`space-y-1.5 w-full text-left ${onClick ? 'cursor-pointer group' : ''}`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--dd-ink-soft)' }}>
+          <Icon className="w-3.5 h-3.5" style={{ color: 'var(--dd-accent)' }} />
+          {label}
+          {onClick && <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--dd-accent)' }}>Détail →</span>}
+        </span>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{detail}</span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--dd-border)' }}>
+        {percent !== null && (
+          <div className={`h-full rounded-full ${barColor(percent)}`} style={{ width: `${Math.min(100, percent)}%` }} />
+        )}
+      </div>
+    </Wrapper>
+  );
+};
 
 const DetailModal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
   <div
@@ -94,7 +101,7 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
-  const [detail, setDetail] = useState<'errors' | 'users' | null>(null);
+  const [detail, setDetail] = useState<'errors' | 'users' | 'memory' | 'cpu' | 'disk' | 'database' | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -188,24 +195,28 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
             icon={MemoryStick}
             percent={status.memory.usedPercent}
             detail={`${status.memory.usedPercent}% · ${status.memory.usedMB} / ${status.memory.totalMB} Mo`}
+            onClick={() => setDetail('memory')}
           />
           <UsageBar
             label="Processeur (CPU)"
             icon={Cpu}
             percent={status.cpuLoadPercent}
             detail={status.cpuLoadPercent !== null ? `${status.cpuLoadPercent}%` : 'non disponible'}
+            onClick={() => setDetail('cpu')}
           />
           <UsageBar
             label="Stockage"
             icon={HardDrive}
-            percent={status.disk?.usedPercent ?? null}
-            detail={status.disk ? `${status.disk.usedPercent}% · ${status.disk.usedGB} / ${status.disk.totalGB} Go` : 'non disponible'}
+            percent={null}
+            detail={status.disk ? `${status.disk.appUsedMB} Mo (application)` : 'non disponible'}
+            onClick={() => setDetail('disk')}
           />
           <UsageBar
             label="Base de données"
             icon={Database}
             percent={null}
             detail={status.databasePingMs !== null ? `latence ${status.databasePingMs} ms` : 'indisponible'}
+            onClick={() => setDetail('database')}
           />
         </div>
       </div>
@@ -249,6 +260,82 @@ export const SystemStatusPanel: React.FC<SystemStatusPanelProps> = ({ onBackup, 
           )}
         </DetailModal>
       )}
+
+      {detail === 'memory' && (
+        <DetailModal title="Mémoire (RAM)" onClose={() => setDetail(null)}>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <DetailStat label="Utilisée" value={`${status.memory.usedMB} Mo`} />
+              <DetailStat label="Allouée à ce conteneur" value={`${status.memory.totalMB} Mo`} />
+              <DetailStat label="Occupation" value={`${status.memory.usedPercent}%`} />
+              <DetailStat label="Source" value={status.memory.source === 'cgroup' ? 'Conteneur (réel)' : 'Machine hôte (repli)'} />
+            </div>
+            <div className="pt-2 border-t" style={{ borderColor: 'var(--dd-border)' }}>
+              <p className="font-bold mb-1.5" style={{ color: 'var(--dd-ink)' }}>Détail du processus Node</p>
+              <div className="grid grid-cols-3 gap-2">
+                <DetailStat label="RSS" value={`${status.memory.processRssMB} Mo`} />
+                <DetailStat label="Tas utilisé" value={`${status.memory.processHeapUsedMB} Mo`} />
+                <DetailStat label="Tas alloué" value={`${status.memory.processHeapTotalMB} Mo`} />
+              </div>
+            </div>
+            <p className="text-[11px] pt-1" style={{ color: 'var(--dd-ink-faint)' }}>
+              {status.memory.source === 'cgroup'
+                ? "Mesure réelle de ce conteneur (cgroup), pas de la machine physique partagée par Railway."
+                : "Mesure de repli (machine complète) — les informations de conteneur (cgroup) ne sont pas disponibles ici."}
+              {' '}Pour libérer de la mémoire durablement, utilisez « Vider le cache » dans le Centre de maintenance ; un redémarrage du serveur revient aussi à zéro.
+            </p>
+          </div>
+        </DetailModal>
+      )}
+
+      {detail === 'cpu' && (
+        <DetailModal title="Processeur (CPU)" onClose={() => setDetail(null)}>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <DetailStat label="Utilisation" value={status.cpuLoadPercent !== null ? `${status.cpuLoadPercent}%` : 'non disponible'} />
+              <DetailStat label="vCPU alloués" value={status.cpuAllocated !== null ? String(status.cpuAllocated) : 'inconnu'} />
+              <DetailStat label="Source" value={status.cpuSource === 'cgroup' ? 'Conteneur (réel)' : status.cpuSource === 'host' ? 'Machine hôte (repli)' : 'Indisponible'} />
+            </div>
+            <p className="text-[11px] pt-1" style={{ color: 'var(--dd-ink-faint)' }}>
+              {status.cpuSource === 'cgroup'
+                ? "Calculée sur la fenêtre écoulée depuis la dernière lecture (ce panneau s'actualise toutes les 30s) — pas la charge de la machine hôte à plusieurs dizaines de coeurs partagée entre de nombreux clients Railway."
+                : "Les informations de conteneur (cgroup) ne sont pas disponibles ici ; repli sur la charge de la machine complète."}
+            </p>
+          </div>
+        </DetailModal>
+      )}
+
+      {detail === 'disk' && (
+        <DetailModal title="Stockage" onClose={() => setDetail(null)}>
+          <div className="space-y-3 text-xs">
+            <DetailStat label="Occupé par l'application" value={status.disk ? `${status.disk.appUsedMB} Mo` : 'non disponible'} />
+            <p className="text-[11px] pt-1" style={{ color: 'var(--dd-ink-faint)' }}>
+              Taille du code et des dépendances installées (dossier de l'application), pas l'espace disque total de la machine hôte : ce disque est un volume partagé entre plusieurs conteneurs Railway sur la même machine, sans quota individuel exposé de façon fiable à mesurer depuis l'intérieur. Voir l'onglet « Fichiers & médias » pour l'audit des liens médias (aucun fichier utilisateur n'est stocké ici).
+            </p>
+          </div>
+        </DetailModal>
+      )}
+
+      {detail === 'database' && (
+        <DetailModal title="Base de données" onClose={() => setDetail(null)}>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <DetailStat label="État" value={STATE_META[status.databaseState].label} />
+              <DetailStat label="Latence" value={status.databasePingMs !== null ? `${status.databasePingMs} ms` : 'indisponible'} />
+            </div>
+            <p className="text-[11px] pt-1" style={{ color: 'var(--dd-ink-faint)' }}>
+              Pour le détail complet (nombre de tables, taille, connexions actives, requêtes lentes, vérification d'intégrité), ouvrez l'onglet « Base de données ».
+            </p>
+          </div>
+        </DetailModal>
+      )}
     </div>
   );
 };
+
+const DetailStat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-xl p-2.5" style={{ background: 'var(--dd-panel-hover)' }}>
+    <div className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: 'var(--dd-ink-faint)' }}>{label}</div>
+    <div className="font-mono font-bold" style={{ color: 'var(--dd-ink)' }}>{value}</div>
+  </div>
+);

@@ -1,9 +1,7 @@
 import { Router, Response, Express } from 'express';
 import bcrypt from 'bcryptjs';
-import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { db } from '../dataStore.ts';
 import { authenticateToken, AuthRequest, requireRole, generateToken, generateRefreshToken } from '../middleware/auth.ts';
 import { AdminLevel, ServiceHealthState, SystemStatusService, UserRole, ApiScope, API_SCOPES, WebhookEvent, WEBHOOK_EVENTS } from '../../types.ts';
@@ -14,6 +12,7 @@ import { generateApiKey } from '../apiKeys.ts';
 import { listEndpoints } from '../endpointRegistry.ts';
 import { collectMediaReferences, getMediaSummary, checkLinks, ALLOWED_FORMATS } from '../mediaAudit.ts';
 import { generateBase32Secret, buildOtpAuthUrl, verifyTotp, generateBackupCodes } from '../totp.ts';
+import { getContainerMemory, getContainerCpu, getAppStorage } from '../containerResources.ts';
 import crypto from 'crypto';
 
 const router = Router();
@@ -53,25 +52,6 @@ function getAppVersion(): string {
   return cachedAppVersion;
 }
 
-function getDiskUsage(): { usedPercent: number; totalGB: number; usedGB: number } | null {
-  if (process.platform === 'win32') return null;
-  try {
-    const output = execSync('df -Pk /', { encoding: 'utf8' });
-    const line = output.trim().split('\n')[1];
-    const parts = line.trim().split(/\s+/);
-    const totalKB = Number(parts[1]);
-    const usedKB = Number(parts[2]);
-    if (!totalKB) return null;
-    return {
-      totalGB: Math.round((totalKB / 1024 / 1024) * 10) / 10,
-      usedGB: Math.round((usedKB / 1024 / 1024) * 10) / 10,
-      usedPercent: Math.round((usedKB / totalKB) * 100),
-    };
-  } catch {
-    return null;
-  }
-}
-
 router.get('/activity-logs', (req: AuthRequest, res: Response): void => {
   res.json({ logs: db.activityLogs });
 });
@@ -103,22 +83,22 @@ router.get('/system-status', async (req: AuthRequest, res: Response): Promise<vo
     })
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-
-  const cpuCount = os.cpus()?.length || 0;
-  const cpuLoadPercent =
-    process.platform === 'win32' || cpuCount === 0
-      ? null
-      : Math.min(100, Math.round((os.loadavg()[0] / cpuCount) * 100));
-
-  const disk = getDiskUsage();
+  // Statistiques réelles de CE conteneur (cgroups), pas de la machine hôte
+  // partagée par Railway — voir containerResources.ts pour le détail de
+  // pourquoi os.totalmem()/loadavg() donnaient des chiffres trompeurs.
+  const containerMemory = getContainerMemory();
+  const containerCpu = getContainerCpu();
+  const appStorage = getAppStorage();
+  const processMem = process.memoryUsage();
 
   const services: SystemStatusService[] = [
     { name: 'API', state: 'ok' },
     { name: 'Base de données', state: databaseState, detail: databasePingMs !== null ? `${databasePingMs} ms` : undefined },
-    { name: 'Stockage', state: disk ? (disk.usedPercent >= 90 ? 'degraded' : 'ok') : 'unknown', detail: disk ? `${disk.usedPercent}%` : 'non disponible' },
+    {
+      name: 'Mémoire',
+      state: containerMemory.usedPercent >= 90 ? 'degraded' : 'ok',
+      detail: `${containerMemory.usedPercent}%${containerMemory.source === 'host' ? ' (hôte)' : ''}`,
+    },
   ];
 
   res.json({
@@ -136,13 +116,19 @@ router.get('/system-status', async (req: AuthRequest, res: Response): Promise<vo
       lastDeployAt: metrics.serverStartedAt,
       lastBackupAt: db.lastBackupAt,
       uptimeSeconds: metrics.uptimeSeconds,
-      disk,
+      disk: appStorage ? { appUsedMB: appStorage.usedMB } : null,
       memory: {
-        usedPercent: Math.round((usedMem / totalMem) * 100),
-        totalMB: Math.round(totalMem / 1024 / 1024),
-        usedMB: Math.round(usedMem / 1024 / 1024),
+        usedPercent: containerMemory.usedPercent,
+        totalMB: containerMemory.totalMB,
+        usedMB: containerMemory.usedMB,
+        source: containerMemory.source,
+        processRssMB: Math.round(processMem.rss / 1024 / 1024),
+        processHeapUsedMB: Math.round(processMem.heapUsed / 1024 / 1024),
+        processHeapTotalMB: Math.round(processMem.heapTotal / 1024 / 1024),
       },
-      cpuLoadPercent,
+      cpuLoadPercent: containerCpu.usedPercent,
+      cpuAllocated: containerCpu.allocatedCpus,
+      cpuSource: containerCpu.source,
       services,
     },
   });
@@ -603,15 +589,29 @@ router.get('/maintenance/overview', (req: AuthRequest, res: Response): void => {
 router.post('/maintenance/clear-cache', (req: AuthRequest, res: Response): void => {
   resetMetrics();
   clearLogs();
+
+  // Le serveur est lancé avec --expose-gc (voir package.json) pour rendre ce
+  // bouton réel : sans ça, il n'y a rien qu'un bouton "vider le cache"
+  // puisse honnêtement libérer côté mémoire — vider des tableaux internes
+  // ne rend pas la mémoire au système tant que le ramasse-miettes n'a pas
+  // tourné.
+  const gcAvailable = typeof (global as any).gc === 'function';
+  if (gcAvailable) (global as any).gc();
+
   db.logActivity({
     actor_id: req.user?.id,
     actor_name: req.user?.full_name,
     actor_role: req.user?.role,
     action: 'maintenance_cache_cleared',
-    details: 'Compteurs de métriques et journal technique vidés.',
+    details: `Compteurs de métriques et journal technique vidés${gcAvailable ? ' ; mémoire du processus libérée (garbage collection forcée)' : ''}.`,
     ip_address: req.ip,
   });
-  res.json({ message: 'Cache vidé (métriques et journal technique).' });
+  res.json({
+    message: gcAvailable
+      ? 'Cache vidé et mémoire du processus libérée.'
+      : 'Cache vidé (métriques et journal technique). Libération mémoire indisponible sur cet environnement.',
+    gcRan: gcAvailable,
+  });
 });
 
 router.post('/maintenance/reload-config', async (req: AuthRequest, res: Response): Promise<void> => {
