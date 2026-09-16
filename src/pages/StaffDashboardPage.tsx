@@ -894,7 +894,7 @@ export const StaffDashboardPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {videos.map((v) => (
               <div key={v.id} className="relative rounded-xl overflow-hidden aspect-[9/14] bg-black group">
-                <img src={v.thumbnail_url} alt={v.title} className="w-full h-full object-cover opacity-80" />
+                <img src={v.thumbnail_url} alt={v.title} className="w-full h-full object-cover opacity-80" loading="lazy" />
                 <div className="absolute inset-0 bg-gradient-to-t from-plum/90 via-transparent to-transparent" />
                 <span className="absolute bottom-2 left-2 right-2 text-[10px] text-white font-semibold leading-tight line-clamp-2">
                   {v.title}

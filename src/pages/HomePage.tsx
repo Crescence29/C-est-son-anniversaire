@@ -522,6 +522,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
                     alt={vid.title}
                     className="w-full h-full object-cover"
                     draggable={false}
+                    loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-plum/90 via-plum/20 to-black/30" />
 
@@ -674,6 +675,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectService 
                   src={review.user_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(review.user_name || 'U')}&backgroundColor=d94a76,4a2170`}
                   alt={review.user_name}
                   className="w-8 h-8 rounded-full object-cover"
+                  loading="lazy"
                 />
                 <div>
                   <h4 className="font-serif font-bold text-xs text-ink">{review.user_name}</h4>

@@ -281,6 +281,7 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
                   src={rel.image_url}
                   alt={rel.name}
                   className="w-14 h-14 rounded-lg object-cover"
+                  loading="lazy"
                 />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-serif font-bold text-xs text-ink truncate">{rel.name}</h4>
