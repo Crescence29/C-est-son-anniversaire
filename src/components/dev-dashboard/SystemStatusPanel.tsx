@@ -14,7 +14,7 @@ const STATE_META: Record<ServiceHealthState, { label: string; dot: string; text:
   ok: { label: 'Opérationnel', dot: 'bg-emerald-400', text: 'text-emerald-400' },
   degraded: { label: 'Dégradé', dot: 'bg-amber-400', text: 'text-amber-400' },
   down: { label: 'En panne', dot: 'bg-red-400', text: 'text-red-400' },
-  unknown: { label: 'Non disponible', dot: 'bg-white/25', text: 'text-white/45' },
+  unknown: { label: 'Non disponible', dot: 'bg-slate-400/50', text: 'text-slate-400' },
 };
 
 function timeAgo(iso: string | null): string {
@@ -73,7 +73,7 @@ const DetailModal: React.FC<{ title: string; onClose: () => void; children: Reac
         <h3 className="font-serif font-bold text-base" style={{ color: 'var(--dd-ink)' }}>{title}</h3>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           style={{ color: 'var(--dd-ink-soft)' }}
           aria-label="Fermer"
         >

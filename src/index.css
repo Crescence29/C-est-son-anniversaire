@@ -416,6 +416,27 @@
    completely unaffected.
    ========================================================== */
 .dev-dashboard {
+  /* Thème clair (par défaut) — les valeurs sombres d'origine passent sous
+     .dark .dev-dashboard juste en dessous, pour suivre le même bouton
+     clair/sombre que le reste du site au lieu d'être figées en sombre. */
+  --dd-bg: #f4f6fb;
+  --dd-bg-soft: #eef1f8;
+  --dd-panel: #ffffff;
+  --dd-panel-hover: #f1f4fa;
+  --dd-border: rgba(15, 23, 42, 0.08);
+  --dd-border-strong: rgba(15, 23, 42, 0.16);
+  --dd-ink: #0f172a;
+  --dd-ink-soft: #55607a;
+  --dd-ink-faint: #98a2b8;
+  --dd-accent: #6366f1;
+  --dd-accent-soft: rgba(99, 102, 241, 0.10);
+  --dd-accent-2: #0e7490;
+  background: var(--dd-bg);
+  color: var(--dd-ink);
+  min-height: 100vh;
+}
+
+.dark .dev-dashboard {
   --dd-bg: #0a0e1a;
   --dd-bg-soft: #0d1220;
   --dd-panel: #10162a;
@@ -428,9 +449,6 @@
   --dd-accent: #6366f1;
   --dd-accent-soft: rgba(99, 102, 241, 0.14);
   --dd-accent-2: #22d3ee;
-  background: var(--dd-bg);
-  color: var(--dd-ink);
-  min-height: 100vh;
 }
 
 .dev-dashboard,

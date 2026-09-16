@@ -59,7 +59,7 @@ const STATE_META: Record<string, { label: string; dot: string; text: string }> =
   ok: { label: 'Opérationnel', dot: 'bg-emerald-400', text: 'text-emerald-400' },
   degraded: { label: 'Dégradé', dot: 'bg-amber-400', text: 'text-amber-400' },
   down: { label: 'En panne', dot: 'bg-red-400', text: 'text-red-400' },
-  unknown: { label: 'Sans trafic', dot: 'bg-white/25', text: 'text-white/45' },
+  unknown: { label: 'Sans trafic', dot: 'bg-slate-400/50', text: 'text-slate-400' },
 };
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -864,7 +864,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
   };
 
   return (
-    <div className="dev-dashboard dark flex min-h-screen">
+    <div className="dev-dashboard flex min-h-screen">
       <DevSidebar
         groups={navGroups}
         activeKey={activeTab}
@@ -1221,14 +1221,14 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`w-2 h-2 rounded-full ${mediaCdn?.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                    <span className={`w-2 h-2 rounded-full ${mediaCdn?.configured ? 'bg-emerald-400' : 'bg-slate-400/50'}`} />
                     <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>CDN</span>
                   </div>
                   <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{mediaCdn?.detail}</p>
                 </div>
                 <div className="rounded-2xl p-5 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`w-2 h-2 rounded-full ${mediaExternalStorage?.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                    <span className={`w-2 h-2 rounded-full ${mediaExternalStorage?.configured ? 'bg-emerald-400' : 'bg-slate-400/50'}`} />
                     <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Stockage externe</span>
                   </div>
                   <p className="text-xs" style={{ color: 'var(--dd-ink-faint)' }}>{mediaExternalStorage?.detail}</p>
@@ -1378,7 +1378,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                     {deployment.environments.map((env, i) => (
                       <React.Fragment key={env.key}>
                         <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--dd-panel-hover)', opacity: env.exists ? 1 : 0.6 }}>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${env.active ? 'bg-emerald-400' : env.exists ? 'bg-white/25' : 'bg-red-400/50'}`} />
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${env.active ? 'bg-emerald-400' : env.exists ? 'bg-slate-400/50' : 'bg-red-400/50'}`} />
                           <div className="min-w-0">
                             <div className="text-xs font-bold" style={{ color: 'var(--dd-ink)' }}>
                               {env.name.toUpperCase()} {!env.exists && <span className="font-normal" style={{ color: 'var(--dd-ink-faint)' }}>(n'existe pas)</span>}
@@ -1468,7 +1468,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                     ].map((item) => (
                       <div key={item.label} className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`w-2 h-2 rounded-full ${item.configured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                          <span className={`w-2 h-2 rounded-full ${item.configured ? 'bg-emerald-400' : 'bg-slate-400/50'}`} />
                           <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{item.label}</span>
                         </div>
                         <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{item.detail}</p>
@@ -1476,7 +1476,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                     ))}
                     <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${config.externalServices.configuredCount > 0 ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                        <span className={`w-2 h-2 rounded-full ${config.externalServices.configuredCount > 0 ? 'bg-emerald-400' : 'bg-slate-400/50'}`} />
                         <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>Services externes</span>
                       </div>
                       <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>{config.externalServices.detail}</p>
@@ -1671,7 +1671,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                   <div className="rounded-2xl p-4 border" style={{ background: 'var(--dd-panel)', borderColor: 'var(--dd-border)' }}>
                     <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--dd-ink-faint)' }}>2FA</div>
                     <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${securityOverview.totpEnabled ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                      <span className={`w-2 h-2 rounded-full ${securityOverview.totpEnabled ? 'bg-emerald-400' : 'bg-slate-400/50'}`} />
                       <span className="text-sm font-bold" style={{ color: 'var(--dd-ink)' }}>{securityOverview.totpEnabled ? 'Activée' : 'Désactivée'}</span>
                     </div>
                   </div>

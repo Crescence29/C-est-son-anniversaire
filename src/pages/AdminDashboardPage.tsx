@@ -580,7 +580,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
   };
 
   return (
-    <div className="dev-dashboard dark flex min-h-screen">
+    <div className="dev-dashboard flex min-h-screen">
       <DevSidebar
         groups={navGroups}
         activeKey={activeTab}
