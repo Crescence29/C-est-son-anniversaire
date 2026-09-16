@@ -5,7 +5,7 @@ import {
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
   Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff, Wrench, HardDrive, Clock, ShieldQuestion, Smartphone,
-  TrendingUp, Percent, Grid3x3, DollarSign, MessageSquareHeart, Star,
+  TrendingUp, Percent, Grid3x3, DollarSign, MessageSquareHeart, Star, Tag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -85,6 +85,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   totp_enabled: ShieldCheck,
   totp_disabled: ShieldAlert,
   session_revoked: Monitor,
+  app_version_changed: Tag,
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -110,6 +111,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   totp_enabled: 'Double authentification activée',
   totp_disabled: 'Double authentification désactivée',
   session_revoked: 'Session révoquée',
+  app_version_changed: 'Numéro de version modifié',
 };
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -475,6 +477,9 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
 
   // ---- Déploiement et versions ----
   const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+  const [editingVersion, setEditingVersion] = useState(false);
+  const [versionDraft, setVersionDraft] = useState('');
+  const [savingVersion, setSavingVersion] = useState(false);
 
   const fetchDeployment = async () => {
     try {
@@ -490,6 +495,20 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
     const interval = setInterval(fetchDeployment, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const saveAppVersion = async () => {
+    if (!versionDraft.trim()) return;
+    setSavingVersion(true);
+    try {
+      await api.put('/developer/deployment/version', { version: versionDraft.trim() });
+      setEditingVersion(false);
+      fetchDeployment();
+    } catch (err: any) {
+      alert(err?.message || 'Numéro de version invalide.');
+    } finally {
+      setSavingVersion(false);
+    }
+  };
 
   // ---- Configuration de la solution ----
   const [config, setConfig] = useState<ConfigInfo | null>(null);
@@ -1364,9 +1383,41 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                         « {deployment.currentVersion.commitMessage} »
                       </p>
                     )}
-                    <p className="text-[11px]" style={{ color: 'var(--dd-ink-faint)' }}>
-                      package.json : v{deployment.currentVersion.appVersion} · en ligne depuis {Math.floor(deployment.deploymentStatus.uptimeSeconds / 3600)} h
+                    <p className="text-[11px] mb-3" style={{ color: 'var(--dd-ink-faint)' }}>
+                      En ligne depuis {Math.floor(deployment.deploymentStatus.uptimeSeconds / 3600)} h
                     </p>
+
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--dd-border)' }}>
+                      {editingVersion ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={versionDraft}
+                            onChange={(e) => setVersionDraft(e.target.value)}
+                            placeholder="ex. 1.1.0"
+                            className="px-3 py-1.5 rounded-lg text-xs font-mono w-32"
+                            style={{ background: 'var(--dd-panel-hover)', border: '1px solid var(--dd-border)', color: 'var(--dd-ink)' }}
+                          />
+                          <button onClick={saveAppVersion} disabled={savingVersion || !versionDraft.trim()} className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
+                            {savingVersion ? 'Enregistrement...' : 'Enregistrer'}
+                          </button>
+                          <button onClick={() => setEditingVersion(false)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                            Annuler
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs" style={{ color: 'var(--dd-ink-soft)' }}>Numéro de version affiché : <span className="font-mono font-bold" style={{ color: 'var(--dd-ink)' }}>v{deployment.currentVersion.appVersion}</span></span>
+                          <button
+                            onClick={() => { setVersionDraft(deployment.currentVersion.appVersion); setEditingVersion(true); }}
+                            className="flex items-center gap-1 text-xs font-bold"
+                            style={{ color: 'var(--dd-accent)' }}
+                          >
+                            <Tag className="w-3 h-3" /> Modifier
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>

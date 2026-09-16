@@ -137,6 +137,10 @@ class DataStore {
   // generic key/JSON table instead of adding a dedicated migration for one
   // timestamp.
   lastBackupAt: string | null = null;
+  // Remplace, une fois défini, la version lue depuis package.json (figée
+  // dans le code livré) : permet au développeur de mettre à jour le numéro
+  // affiché directement depuis le tableau de bord, sans toucher au code.
+  appVersion: string | null = null;
   passwords = new Map<string, string>();
   // Comme `passwords` : jamais laissés sur l'objet utilisateur en mémoire
   // (donc jamais sérialisables dans une réponse JSON par accident), pour la
@@ -249,6 +253,7 @@ class DataStore {
     if (systemMetaRows.length > 0) {
       const stored = typeof systemMetaRows[0].data === 'string' ? JSON.parse(systemMetaRows[0].data) : systemMetaRows[0].data;
       this.lastBackupAt = stored?.last_backup_at ?? null;
+      this.appVersion = stored?.app_version ?? null;
     }
 
     for (const user of this.users) {
@@ -591,15 +596,27 @@ class DataStore {
     );
   }
 
-  recordBackup() {
-    this.lastBackupAt = new Date().toISOString();
-    const snapshot = { last_backup_at: this.lastBackupAt };
+  // La ligne 'system' est un objet JSON unique (pas une table à colonnes) :
+  // toute écriture doit donc envoyer l'objet complet, sinon elle écraserait
+  // silencieusement les autres champs déjà stockés dessus.
+  private writeSystemMeta() {
+    const snapshot = { last_backup_at: this.lastBackupAt, app_version: this.appVersion };
     this.queue(() =>
       this.pool.execute(
         "INSERT INTO `site_settings` (id, data) VALUES ('system', ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
         [JSON.stringify(snapshot)]
       )
     );
+  }
+
+  recordBackup() {
+    this.lastBackupAt = new Date().toISOString();
+    this.writeSystemMeta();
+  }
+
+  setAppVersion(version: string | null) {
+    this.appVersion = version;
+    this.writeSystemMeta();
   }
 
   calculateCommission(price: number, categoryId: string) {

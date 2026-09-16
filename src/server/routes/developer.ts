@@ -39,17 +39,24 @@ const ADMIN_LEVELS: AdminLevel[] = ['super_admin', 'administrateur', 'manager', 
 // État technique (déplacé depuis /api/admin — inchangé sur le fond)
 // ---------------------------------------------------------------------------
 
-let cachedAppVersion: string | null = null;
-function getAppVersion(): string {
-  if (cachedAppVersion) return cachedAppVersion;
+let cachedPackageVersion: string | null = null;
+function getPackageVersion(): string {
+  if (cachedPackageVersion) return cachedPackageVersion;
   try {
     const pkgPath = path.join(process.cwd(), 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    cachedAppVersion = pkg.version || '0.0.0';
+    cachedPackageVersion = pkg.version || '0.0.0';
   } catch {
-    cachedAppVersion = 'inconnue';
+    cachedPackageVersion = 'inconnue';
   }
-  return cachedAppVersion;
+  return cachedPackageVersion;
+}
+
+// Priorité à la version définie depuis le tableau de bord (base de
+// données) : modifiable sans toucher au code ni redéployer. Ne retombe sur
+// package.json que tant qu'aucune version n'a jamais été définie ainsi.
+function getAppVersion(): string {
+  return db.appVersion || getPackageVersion();
 }
 
 router.get('/activity-logs', (req: AuthRequest, res: Response): void => {
@@ -487,6 +494,31 @@ router.get('/deployment/info', (req: AuthRequest, res: Response): void => {
       reason: "Pas de rollback automatique par sécurité : un clic malheureux ne doit pas pouvoir couper la production. Pour revenir à une version antérieure, utilisez le bouton « Redeploy » sur un déploiement passé dans le tableau de bord Railway, ou faites un `git revert` suivi d'un nouveau déploiement.",
     },
   });
+});
+
+// PUT /api/developer/deployment/version — change le numéro de version
+// affiché, indépendamment de package.json (qui reste figé dans le code
+// livré) : évite d'avoir à modifier le code et redéployer juste pour ça.
+router.put('/deployment/version', (req: AuthRequest, res: Response): void => {
+  const { version } = req.body || {};
+  if (typeof version !== 'string' || !/^[\w.+-]{1,32}$/.test(version.trim())) {
+    res.status(400).json({ error: 'Numéro de version invalide (lettres, chiffres, points, tirets — 32 caractères max).' });
+    return;
+  }
+
+  const trimmed = version.trim();
+  db.setAppVersion(trimmed);
+
+  db.logActivity({
+    actor_id: req.user?.id,
+    actor_name: req.user?.full_name,
+    actor_role: req.user?.role,
+    action: 'app_version_changed',
+    details: `Numéro de version affiché défini sur ${trimmed}.`,
+    ip_address: req.ip,
+  });
+
+  res.json({ appVersion: db.appVersion });
 });
 
 // ---------------------------------------------------------------------------
