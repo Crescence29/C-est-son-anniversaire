@@ -5,6 +5,7 @@ import {
   Settings as SettingsIconAlias, Activity, DatabaseBackup, RefreshCw, Trash2,
   Code2, Key, Webhook as WebhookIcon, Globe, Copy, Power, ScrollText, Search, Database, Image as ImageIcon, Link as LinkIcon, AlertTriangle,
   Rocket, GitCommit, ArrowDown, Lock, Sliders, EyeOff, Wrench, HardDrive, Clock, ShieldQuestion, Smartphone,
+  TrendingUp, Percent, Grid3x3, DollarSign, MessageSquareHeart, Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../utils/api.ts';
@@ -128,7 +129,13 @@ function timeAgo(iso: string | null): string {
   return `il y a ${Math.round(hours / 24)} j`;
 }
 
-export const DeveloperDashboardPage: React.FC = () => {
+interface DeveloperDashboardPageProps {
+  // Permet aux raccourcis "Business" (Commissions, Catalogue, etc.) de
+  // rebasculer App.tsx sur l'espace admin, directement sur le bon onglet.
+  onNavigate?: (view: string, param?: string) => void;
+}
+
+export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ onNavigate }) => {
   const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'system' | 'accounts' | 'brand' | 'api' | 'logs' | 'database' | 'media' | 'deployment' | 'config' | 'maintenance' | 'security'>('system');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -811,6 +818,35 @@ export const DeveloperDashboardPage: React.FC = () => {
       title: 'Comptes',
       items: [{ key: 'accounts', label: `Comptes & rôles (${accounts.length})`, icon: Users }],
     },
+    // Raccourcis vers l'espace Admin — accès business complet accordé au
+    // compte développeur à la demande explicite du client (annule la
+    // séparation stricte mise en place à l'origine, voir rapport.md).
+    // Ouvrent directement le bon onglet dans AdminDashboardPage.tsx plutôt
+    // que de dupliquer toute cette logique ici.
+    {
+      title: 'Tableau de bord',
+      items: [{ key: 'admin:kpi', label: 'Vue Synthèse', icon: TrendingUp }],
+    },
+    {
+      title: 'Gestion',
+      items: [
+        { key: 'admin:commissions', label: 'Commissions', icon: Percent },
+        { key: 'admin:users', label: 'Utilisateurs & Rôles', icon: Users },
+        { key: 'admin:catalog', label: 'Catalogue', icon: Grid3x3 },
+        { key: 'admin:reviews', label: 'Avis clients', icon: Star },
+      ],
+    },
+    {
+      title: 'Finances',
+      items: [{ key: 'admin:transactions', label: 'Journal Financier', icon: DollarSign }],
+    },
+    {
+      title: 'Site',
+      items: [
+        { key: 'admin:settings', label: 'Réglages du site', icon: Sliders },
+        { key: 'admin:support', label: 'Avis & Suggestions', icon: MessageSquareHeart },
+      ],
+    },
   ];
 
   const TAB_TITLES: Record<typeof activeTab, { title: string; subtitle: string }> = {
@@ -832,7 +868,13 @@ export const DeveloperDashboardPage: React.FC = () => {
       <DevSidebar
         groups={navGroups}
         activeKey={activeTab}
-        onSelect={(key) => setActiveTab(key as typeof activeTab)}
+        onSelect={(key) => {
+          if (key.startsWith('admin:')) {
+            onNavigate?.('admin', key.slice('admin:'.length));
+          } else {
+            setActiveTab(key as typeof activeTab);
+          }
+        }}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         mobileOpen={mobileSidebarOpen}

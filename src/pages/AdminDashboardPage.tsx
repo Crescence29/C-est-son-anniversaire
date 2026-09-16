@@ -83,7 +83,16 @@ const ACTIVITY_LABELS: Record<string, string> = {
   system_backup_created: 'Sauvegarde manuelle déclenchée',
 };
 
-export const AdminDashboardPage: React.FC = () => {
+type AdminTab = 'kpi' | 'commissions' | 'users' | 'transactions' | 'reviews' | 'catalog' | 'settings' | 'support' | 'developer';
+
+interface AdminDashboardPageProps {
+  // Permet d'arriver directement sur un onglet précis (ex. depuis les
+  // raccourcis "Business" du tableau de bord développeur) plutôt que de
+  // toujours recommencer sur la vue synthèse.
+  initialTab?: AdminTab;
+}
+
+export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialTab }) => {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = Boolean(currentUser?.is_super_admin);
 
@@ -93,7 +102,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'kpi' | 'commissions' | 'users' | 'transactions' | 'reviews' | 'catalog' | 'settings' | 'support' | 'developer'>('kpi');
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab || 'kpi');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const pendingReviewsCount = reviews.filter((r) => r.status === 'pending').length;

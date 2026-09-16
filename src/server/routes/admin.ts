@@ -6,8 +6,12 @@ import { User, UserRole, UserStatus, ReviewStatus, Category, Service } from '../
 
 const router = Router();
 
-// Require Admin Role for all routes
-router.use(authenticateToken, requireRole('admin'));
+// Réservé à l'admin, et désormais aussi au compte développeur : demande
+// explicite du client de donner au développeur un accès complet aux
+// sections business (commissions, catalogue, avis, finances, réglages du
+// site), ce qui annule la séparation stricte mise en place initialement
+// (voir migration 009 / rapport.md) — choix assumé, pas un oubli.
+router.use(authenticateToken, requireRole('admin', 'developer'));
 
 // GET /api/admin/stats
 router.get('/stats', (req: AuthRequest, res: Response): void => {

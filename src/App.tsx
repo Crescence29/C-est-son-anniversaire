@@ -29,6 +29,10 @@ const MainApp: React.FC = () => {
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
+  // Cible d'onglet quand le compte développeur ouvre l'espace admin depuis
+  // ses propres raccourcis "Business" (ex. cliquer "Commissions" doit ouvrir
+  // directement cet onglet, pas toujours revenir sur la vue synthèse).
+  const [adminInitialTab, setAdminInitialTab] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const onMaintenance = (e: Event) => {
@@ -59,6 +63,9 @@ const MainApp: React.FC = () => {
     } else if (view === 'order-detail') {
       if (param) setSelectedOrderId(param);
       setCurrentView('order-detail');
+    } else if (view === 'admin') {
+      setAdminInitialTab(param);
+      setCurrentView('admin');
     } else {
       setCurrentView(view);
     }
@@ -174,11 +181,11 @@ const MainApp: React.FC = () => {
         )}
 
         {currentView === 'admin' && (
-          <AdminDashboardPage />
+          <AdminDashboardPage initialTab={adminInitialTab as any} />
         )}
 
         {currentView === 'developer' && (
-          <DeveloperDashboardPage />
+          <DeveloperDashboardPage onNavigate={navigateTo} />
         )}
 
         {(currentView === 'login' || currentView === 'register') && (
