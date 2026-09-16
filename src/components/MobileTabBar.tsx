@@ -71,6 +71,7 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ currentView, onNavig
           src="/CORTEX.jpg"
           alt="Cortex Bénin TV"
           className={`w-7 h-7 rounded-full object-cover ${effectClassName}`}
+          loading="eager"
         />
       ),
     },

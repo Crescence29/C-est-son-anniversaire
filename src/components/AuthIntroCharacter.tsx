@@ -41,6 +41,7 @@ export const AuthIntroCharacter: React.FC = () => {
             src="/personnage-gateau.png"
             alt=""
             className="h-36 sm:h-44 w-auto"
+            loading="eager"
           />
         </div>
       </div>

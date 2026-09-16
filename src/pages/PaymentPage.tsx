@@ -686,6 +686,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                     src={selectedProvider.logo}
                     alt={selectedProvider.name}
                     className="w-full h-full object-contain p-0.5"
+                    loading="eager"
                   />
 
                 </div>

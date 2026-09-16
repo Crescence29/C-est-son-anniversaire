@@ -83,6 +83,7 @@ export const AppLogo: React.FC<AppLogoProps> = ({
             src={imageSrc}
             alt="C'est son anniversaire logo"
             className="w-full h-full object-contain rounded-full shadow-inner"
+            loading="eager"
           />
         </div>
       )}

@@ -144,6 +144,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             src={service.image_url}
             alt={service.name}
             className="w-16 h-16 rounded-xl object-cover shrink-0 shadow-xs"
+            loading="eager"
           />
 
           <div className="min-w-0">

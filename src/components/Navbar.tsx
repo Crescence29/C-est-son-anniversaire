@@ -223,6 +223,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   src={user.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.full_name || 'U')}&backgroundColor=d94a76,4a2170`}
                   alt={user.full_name}
                   className="w-7 h-7 rounded-full object-cover border border-violet/20"
+                  loading="eager"
                 />
                 <span className="text-xs font-medium text-ink hidden sm:inline max-w-[100px] truncate">
                   {user.full_name.split(' ')[0]}

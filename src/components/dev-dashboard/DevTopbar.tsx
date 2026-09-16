@@ -55,6 +55,7 @@ export const DevTopbar: React.FC<DevTopbarProps> = ({ title, subtitle, onOpenMob
               alt={user.full_name}
               className="w-8 h-8 rounded-full object-cover border"
               style={{ borderColor: 'var(--dd-border-strong)' }}
+              loading="eager"
             />
             <div className="hidden sm:block min-w-0">
               <p className="text-xs font-semibold truncate max-w-[140px]" style={{ color: 'var(--dd-ink)' }}>

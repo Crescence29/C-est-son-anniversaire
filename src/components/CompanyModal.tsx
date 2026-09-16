@@ -79,7 +79,7 @@ export const CompanyModal: React.FC<CompanyModalProps> = ({ open, onClose }) => 
 
         <div className="flex items-center gap-3 mb-4 pr-10">
           <div className="w-14 h-14 rounded-full overflow-hidden shrink-0 shadow-md">
-            <img src="/CORTEX.jpg" alt="Cortex Bénin TV" className="w-full h-full object-cover" />
+            <img src="/CORTEX.jpg" alt="Cortex Bénin TV" className="w-full h-full object-cover" loading="lazy" />
           </div>
           <div>
             <h3 className="font-serif font-bold text-lg text-ink leading-tight">Cortex Bénin TV</h3>

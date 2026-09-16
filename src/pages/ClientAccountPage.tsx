@@ -127,6 +127,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
           src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.full_name || 'U')}&backgroundColor=d94a76,4a2170`}
           alt={user?.full_name}
           className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md"
+          loading="eager"
         />
 
         <div className="flex-1 text-center sm:text-left">
@@ -219,6 +220,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
                     src={order.service_image || 'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=150&q=80'}
                     alt={order.service_name}
                     className="w-14 h-14 rounded-xl object-cover shrink-0"
+                    loading="lazy"
                   />
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -275,6 +277,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
                   src={fav.service?.image_url}
                   alt={fav.service?.name}
                   className="w-14 h-14 rounded-xl object-cover shrink-0"
+                  loading="lazy"
                 />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-serif font-bold text-xs sm:text-sm text-ink truncate">
@@ -314,6 +317,7 @@ export const ClientAccountPage: React.FC<ClientAccountPageProps> = ({
                   src={editAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(editName || 'U')}&backgroundColor=d94a76,4a2170`}
                   alt="Aperçu de la photo de profil"
                   className="w-16 h-16 rounded-full object-cover border-2 border-violet/30 shadow-md"
+                  loading="eager"
                 />
                 {isProcessingPhoto && (
                   <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">

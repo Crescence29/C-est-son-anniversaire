@@ -123,6 +123,7 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
           src={service.image_url}
           alt={service.name}
           className="w-full h-full object-cover"
+          loading="eager"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-plum/90 via-plum/30 to-black/20" />
 
