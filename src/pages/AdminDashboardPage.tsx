@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Payment, Review, UserRole, UserStatus, Category, Service, ActivityLog, SiteSettings, FaqItem, SupportMessage } from '../types.ts';
+import { User, Payment, Review, UserRole, UserStatus, Category, Service, SiteSettings, FaqItem, SupportMessage } from '../types.ts';
 import { api } from '../utils/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { RefreshLoadingOverlay } from '../components/RefreshLoadingOverlay.tsx';
@@ -9,10 +9,8 @@ import { DevSidebar, DevNavGroup } from '../components/dev-dashboard/DevSidebar.
 import { DevTopbar } from '../components/dev-dashboard/DevTopbar.tsx';
 import { KpiCard } from '../components/dev-dashboard/KpiCard.tsx';
 import { ServiceStatusCard } from '../components/dev-dashboard/ServiceStatusCard.tsx';
-import { SystemStatusPanel } from '../components/dev-dashboard/SystemStatusPanel.tsx';
 import { SkeletonCard } from '../components/dev-dashboard/SkeletonCard.tsx';
 import {
-  Shield,
   Percent,
   Users,
   DollarSign,
@@ -28,62 +26,15 @@ import {
   Grid3x3,
   Trash2,
   Plus,
-  Crown,
-  Activity,
-  LogIn,
-  UserPlus,
-  ShieldAlert,
   Settings as SettingsIcon,
-  LifeBuoy,
   MessageSquareHeart,
   Send,
   Ban,
   KeyRound,
   Copy,
-  DatabaseBackup as DatabaseBackupIcon,
 } from 'lucide-react';
 
-const ACTIVITY_ICONS: Record<string, React.ElementType> = {
-  login_success: LogIn,
-  login_failed: ShieldAlert,
-  register: UserPlus,
-  user_created: UserPlus,
-  user_role_changed: Shield,
-  user_status_changed: ShieldAlert,
-  category_created: Grid3x3,
-  category_updated: Grid3x3,
-  service_created: Grid3x3,
-  service_updated: Grid3x3,
-  settings_updated: SettingsIcon,
-  faq_created: LifeBuoy,
-  support_message_sent: MessageSquareHeart,
-  support_message_replied: Send,
-  profile_updated: UserPlus,
-  password_reset_by_admin: KeyRound,
-  system_backup_created: DatabaseBackupIcon,
-};
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  login_success: 'Connexion réussie',
-  login_failed: 'Connexion échouée',
-  register: 'Inscription',
-  user_created: 'Compte créé par un admin',
-  user_role_changed: 'Rôle modifié',
-  user_status_changed: 'Statut modifié',
-  category_created: 'Catégorie créée',
-  category_updated: 'Catégorie modifiée',
-  service_created: 'Prestation créée',
-  service_updated: 'Prestation modifiée',
-  settings_updated: 'Réglages du site modifiés',
-  faq_created: 'Question FAQ ajoutée',
-  support_message_sent: 'Nouveau message client',
-  support_message_replied: 'Réponse envoyée à un client',
-  profile_updated: 'Profil personnel modifié',
-  password_reset_by_admin: 'Mot de passe réinitialisé par le développeur',
-  system_backup_created: 'Sauvegarde manuelle déclenchée',
-};
-
-type AdminTab = 'kpi' | 'commissions' | 'users' | 'transactions' | 'reviews' | 'catalog' | 'settings' | 'support' | 'developer';
+type AdminTab = 'kpi' | 'commissions' | 'users' | 'transactions' | 'reviews' | 'catalog' | 'settings' | 'support';
 
 interface AdminDashboardPageProps {
   // Permet d'arriver directement sur un onglet précis (ex. depuis les
@@ -94,36 +45,16 @@ interface AdminDashboardPageProps {
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialTab }) => {
   const { user: currentUser } = useAuth();
-  const isSuperAdmin = Boolean(currentUser?.is_super_admin);
 
   const [stats, setStats] = useState<any>(null);
   const [commissions, setCommissions] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab || 'kpi');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const pendingReviewsCount = reviews.filter((r) => r.status === 'pending').length;
-
-  const fetchActivityLogs = async () => {
-    if (!isSuperAdmin) return;
-    try {
-      const res = await api.get<{ logs: ActivityLog[] }>('/admin/activity-logs');
-      setActivityLogs(res.logs || []);
-    } catch {
-      // benign : silencieux pour ne pas interrompre le polling
-    }
-  };
-
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    fetchActivityLogs();
-    const interval = setInterval(fetchActivityLogs, 15000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin]);
 
   // Catalog Management (Categories & Services)
   const [categories, setCategories] = useState<Category[]>([]);
@@ -215,29 +146,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
   };
 
   const refreshState = useRefreshProgress();
-  const activityRefreshState = useRefreshProgress();
-
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const handleBackup = async () => {
-    setIsBackingUp(true);
-    try {
-      const res = await api.post<{ backup: unknown }>('/admin/system-backup');
-      const blob = new Blob([JSON.stringify(res.backup, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      link.href = url;
-      link.download = `sauvegarde-cest-son-anniversaire-${stamp}.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      alert(err?.message || 'Erreur lors de la sauvegarde.');
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
 
   useEffect(() => {
     fetchAdminData().catch(() => {});
@@ -311,28 +219,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
       alert(err?.message || 'Erreur lors de l’enregistrement des réglages.');
     } finally {
       setIsSavingSettings(false);
-    }
-  };
-
-  const [isSavingLogo, setIsSavingLogo] = useState(false);
-  const [logoSuccessMsg, setLogoSuccessMsg] = useState('');
-
-  const handleSaveLogo = async () => {
-    if (!settings) return;
-
-    try {
-      setIsSavingLogo(true);
-      await api.put('/admin/settings', {
-        logo_mode: settings.logo_mode,
-        logo_text: settings.logo_text,
-      });
-      refreshAppLogo();
-      setLogoSuccessMsg('Logo mis à jour !');
-      setTimeout(() => setLogoSuccessMsg(''), 3000);
-    } catch (err: any) {
-      alert(err?.message || 'Erreur lors de l’enregistrement du logo.');
-    } finally {
-      setIsSavingLogo(false);
     }
   };
 
@@ -562,9 +448,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
         { key: 'support', label: 'Avis & Suggestions', icon: MessageSquareHeart, badge: openSupportCount },
       ],
     },
-    ...(isSuperAdmin
-      ? [{ title: 'Développeur', items: [{ key: 'developer', label: 'Développeur', icon: Crown }] }]
-      : []),
   ];
 
   const TAB_TITLES: Record<typeof activeTab, { title: string; subtitle: string }> = {
@@ -576,7 +459,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
     catalog: { title: 'Catalogue', subtitle: 'Catégories, prestations et centre d’aide' },
     settings: { title: 'Réglages du site', subtitle: 'Contenu, blocs et réseaux sociaux' },
     support: { title: 'Avis & Suggestions', subtitle: 'Messages reçus des clients' },
-    developer: { title: 'Développeur', subtitle: 'Identité visuelle et journal d’activité' },
   };
 
   return (
@@ -599,7 +481,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           onRefresh={() => refreshState.run(fetchAdminData)}
           user={currentUser}
-          roleLabel={isSuperAdmin ? 'Développeur' : 'Admin'}
+          roleLabel={currentUser?.role === 'developer' ? 'Développeur' : 'Admin'}
         />
 
         <main className="flex-1 overflow-y-auto dd-scrollbar p-4 sm:p-6 space-y-6">
@@ -839,7 +721,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
                           >
                             {u.status === 'active' ? 'Suspendre' : 'Réactiver'}
                           </button>
-                          {isSuperAdmin && (
+                          {currentUser?.role === 'developer' && (
                             <button
                               onClick={() => handleResetPassword(u)}
                               disabled={isResettingPasswordFor === u.id}
@@ -1364,152 +1246,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
         </div>
       )}
 
-      {/* TAB 5: DEVELOPER - LOGO IDENTITY + ACTIVITY LOG */}
-      {isSuperAdmin && activeTab === 'developer' && (
-        <div className="space-y-6">
-          <SystemStatusPanel onBackup={handleBackup} isBackingUp={isBackingUp} />
-
-          {/* Identité visuelle (logo) */}
-          <div className="glass-card rounded-2xl p-6 border border-gold-brand/30 space-y-4">
-            <div>
-              <h3 className="font-serif font-bold text-base text-ink flex items-center gap-2">
-                <Crown className="w-4 h-4 text-gold-brand" />
-                Identité visuelle
-              </h3>
-              <p className="text-xs text-ink/70 mt-0.5">
-                Remplacez le logo image par le nom de la marque, partout dans l'application.
-              </p>
-            </div>
-
-            {logoSuccessMsg && (
-              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                {logoSuccessMsg}
-              </div>
-            )}
-
-            {settings && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleSettingsField('logo_mode', 'image')}
-                    className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                      settings.logo_mode === 'image' ? 'bg-gold-brand text-plum shadow-md' : 'bg-black/5 dark:bg-white/10 text-ink/70'
-                    }`}
-                  >
-                    Logo image
-                  </button>
-                  <button
-                    onClick={() => handleSettingsField('logo_mode', 'text')}
-                    className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                      settings.logo_mode === 'text' ? 'bg-gold-brand text-plum shadow-md' : 'bg-black/5 dark:bg-white/10 text-ink/70'
-                    }`}
-                  >
-                    Nom de marque (texte)
-                  </button>
-                </div>
-
-                {settings.logo_mode === 'text' && (
-                  <input
-                    type="text"
-                    value={settings.logo_text}
-                    onChange={(e) => handleSettingsField('logo_text', e.target.value)}
-                    placeholder="Nom affiché à la place du logo"
-                    className="w-full p-2.5 rounded-xl bg-white/80 dark:bg-white/10 border border-black/10 dark:border-white/10 text-xs text-ink"
-                  />
-                )}
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/60 dark:bg-white/10 border border-black/5 dark:border-white/10">
-                  <span className="text-[10px] font-mono uppercase text-ink/50">Aperçu</span>
-                  {settings.logo_mode === 'text' ? (
-                    <span className="font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-brand to-gold-brand text-lg whitespace-nowrap">
-                      {settings.logo_text || 'C’est son anniversaire'}
-                    </span>
-                  ) : (
-                    <AppLogo size="sm" />
-                  )}
-                </div>
-
-                <button
-                  onClick={handleSaveLogo}
-                  disabled={isSavingLogo}
-                  className="btn-festive text-xs px-5 py-2.5 disabled:opacity-60"
-                >
-                  {isSavingLogo ? 'Enregistrement...' : 'Enregistrer le logo'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="glass-card rounded-2xl p-6 border border-gold-brand/30 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-serif font-bold text-base text-ink flex items-center gap-2">
-                <Crown className="w-4 h-4 text-gold-brand" />
-                Journal d'activité
-              </h3>
-              <p className="text-xs text-ink/70 mt-0.5">
-                Connexions, inscriptions et modifications sensibles, en temps réel (actualisation automatique toutes les 15s).
-              </p>
-            </div>
-            <button
-              onClick={() => activityRefreshState.run(fetchActivityLogs)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold text-gold-brand border border-gold-brand/30 hover:bg-gold-brand/10 transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Actualiser
-            </button>
-          </div>
-
-          {activityLogs.length === 0 ? (
-            <div className="text-center py-12 text-ink/50 text-xs">
-              <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              Aucune activité enregistrée pour le moment.
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
-              {activityLogs.map((log) => {
-                const Icon = ACTIVITY_ICONS[log.action] || Activity;
-                const isAlert = log.action === 'login_failed' || log.action === 'user_status_changed';
-                return (
-                  <div
-                    key={log.id}
-                    className="flex items-start gap-3 p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10"
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                        isAlert ? 'bg-red-500/10 text-red-600' : 'bg-gold-brand/10 text-gold-brand'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-ink">
-                          {ACTIVITY_LABELS[log.action] || log.action}
-                        </span>
-                        <span className="text-[10px] font-mono text-ink/50 whitespace-nowrap">
-                          {new Date(log.created_at).toLocaleString('fr-FR')}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-ink/70 mt-0.5">
-                        {log.actor_name || 'Système'}
-                        {log.actor_role ? ` (${log.actor_role})` : ''}
-                        {log.details ? ` — ${log.details}` : ''}
-                      </p>
-                      {log.ip_address && (
-                        <p className="text-[10px] font-mono text-ink/40 mt-0.5">IP : {log.ip_address}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          </div>
-        </div>
-      )}
-
       {/* TAB 4: SYNTHESIS OVERVIEW */}
       {activeTab === 'kpi' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -1565,13 +1301,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
         errorMessage={refreshState.errorMessage}
         onRetry={refreshState.retry}
         onDismiss={refreshState.dismiss}
-      />
-      <RefreshLoadingOverlay
-        status={activityRefreshState.status}
-        progress={activityRefreshState.progress}
-        errorMessage={activityRefreshState.errorMessage}
-        onRetry={activityRefreshState.retry}
-        onDismiss={activityRefreshState.dismiss}
       />
     </div>
   );
