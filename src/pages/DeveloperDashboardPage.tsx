@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import {
   Gauge, Users, Crown, KeyRound, Ban as BanIcon, ShieldCheck,
   Monitor, X, Plus, CheckCircle2, LogIn, LogOut, UserPlus, Shield, ShieldAlert,
@@ -630,6 +631,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
   const [securityOverview, setSecurityOverview] = useState<SecurityOverview | null>(null);
   const [mySessions, setMySessions] = useState<AccountSession[]>([]);
   const [totpSetup, setTotpSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [totpQrDataUrl, setTotpQrDataUrl] = useState<string | null>(null);
   const [totpEnableCode, setTotpEnableCode] = useState('');
   const [totpBackupCodes, setTotpBackupCodes] = useState<string[] | null>(null);
   const [totpDisablePassword, setTotpDisablePassword] = useState('');
@@ -667,6 +669,11 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
     try {
       const res = await api.post<{ secret: string; otpauthUrl: string }>('/developer/security/totp/setup', {});
       setTotpSetup(res);
+      try {
+        setTotpQrDataUrl(await QRCode.toDataURL(res.otpauthUrl, { width: 200, margin: 1 }));
+      } catch {
+        setTotpQrDataUrl(null);
+      }
     } catch (err: any) {
       alert(err?.message || 'Échec du démarrage de la configuration.');
     } finally {
@@ -680,6 +687,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
       const res = await api.post<{ backupCodes: string[] }>('/developer/security/totp/enable', { token: totpEnableCode });
       setTotpBackupCodes(res.backupCodes);
       setTotpSetup(null);
+      setTotpQrDataUrl(null);
       setTotpEnableCode('');
       fetchSecurityOverview();
     } catch (err: any) {
@@ -1814,8 +1822,13 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                 ) : totpSetup ? (
                   <div className="space-y-3">
                     <p className="text-xs" style={{ color: 'var(--dd-ink-soft)' }}>
-                      Ajoutez ce compte dans Google Authenticator, Authy ou une app compatible, en collant l'URL ou en saisissant la clé manuellement :
+                      Scannez ce code avec Google Authenticator, Authy ou une app compatible — ou saisissez la clé manuellement si vous ne pouvez pas scanner :
                     </p>
+                    {totpQrDataUrl && (
+                      <div className="flex justify-center p-3 rounded-xl" style={{ background: '#fff' }}>
+                        <img src={totpQrDataUrl} alt="QR code d'activation de la double authentification" width={200} height={200} />
+                      </div>
+                    )}
                     <div className="p-3 rounded-xl font-mono text-xs break-all" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink)' }}>{totpSetup.secret}</div>
                     <a href={totpSetup.otpauthUrl} className="text-xs underline" style={{ color: 'var(--dd-accent)' }}>Ouvrir dans une application d'authentification</a>
                     <input
@@ -1830,7 +1843,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                       <button onClick={confirmTotpEnable} disabled={totpBusy || totpEnableCode.length !== 6} className="flex-1 py-2 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: 'var(--dd-accent-soft)', color: 'var(--dd-accent)' }}>
                         Confirmer et activer
                       </button>
-                      <button onClick={() => setTotpSetup(null)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
+                      <button onClick={() => { setTotpSetup(null); setTotpQrDataUrl(null); }} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--dd-panel-hover)', color: 'var(--dd-ink-soft)' }}>
                         Annuler
                       </button>
                     </div>
