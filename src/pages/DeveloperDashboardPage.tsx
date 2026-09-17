@@ -273,6 +273,20 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
     }
   };
 
+  const revokeAccountSession = async (account: InternalAccount, sessionId: string) => {
+    if (!window.confirm('Déconnecter cet appareil précis ?')) return;
+    setRevokingSessionId(sessionId);
+    try {
+      await api.post(`/developer/accounts/${account.id}/sessions/${sessionId}/revoke`, {});
+      openSessions(account);
+      fetchAccounts();
+    } catch (err: any) {
+      alert(err?.message || 'Échec de la révocation.');
+    } finally {
+      setRevokingSessionId(null);
+    }
+  };
+
   const handleTogglePermission = async (account: InternalAccount, key: AccountPermission) => {
     const has = account.permissions.includes(key);
     const nextPermissions = has ? account.permissions.filter((p) => p !== key) : [...account.permissions, key];
@@ -2326,9 +2340,20 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
                       <p style={{ color: 'var(--dd-ink)' }}>{s.device_label || 'Appareil inconnu'}</p>
                       <p className="text-[10px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{s.ip_address || 'IP inconnue'}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="text-[10px] font-mono" style={{ color: 'var(--dd-ink-faint)' }}>{timeAgo(s.created_at)}</p>
-                      {s.revoked_at && <p className="text-[10px] font-bold text-red-400">Révoquée</p>}
+                      {s.revoked_at ? (
+                        <p className="text-[10px] font-bold text-red-400">Révoquée</p>
+                      ) : (
+                        <button
+                          onClick={() => revokeAccountSession(sessionsModalFor, s.id)}
+                          disabled={revokingSessionId === s.id}
+                          className="text-[10px] font-bold disabled:opacity-50"
+                          style={{ color: '#f43f5e' }}
+                        >
+                          {revokingSessionId === s.id ? 'Révocation...' : 'Déconnecter'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
