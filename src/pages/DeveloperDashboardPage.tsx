@@ -2401,7 +2401,7 @@ export const DeveloperDashboardPage: React.FC<DeveloperDashboardPageProps> = ({ 
               ))}
             </div>
             <p className="text-[10px] pt-2" style={{ color: 'var(--dd-ink-faint)' }}>
-              Ces permissions sont enregistrées sur le compte ; leur application dans le reste de l’application est en cours de déploiement (voir rapport.md).
+              Ces permissions sont réellement vérifiées sur les actions de commandes, catalogue et support de l'espace régie. Un compte staff jamais configuré ici garde un accès complet (rien ne change tant que vous n'enregistrez pas une première fois) ; dès que vous enregistrez, seules les cases cochées restent autorisées pour ce compte.
             </p>
           </div>
         </div>

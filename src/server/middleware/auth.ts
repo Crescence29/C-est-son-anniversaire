@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../dataStore.ts';
-import { User, UserRole } from '../../types.ts';
+import { User, UserRole, AccountPermission } from '../../types.ts';
 import { recordLog } from '../logs.ts';
 
 // En production, un secret par défaut prévisible permettrait de forger des
@@ -108,6 +108,43 @@ export function requireRole(...allowedRoles: UserRole[]) {
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         error: `Accès refusé. Rôle requis : ${allowedRoles.join(' ou ')}. Votre rôle actuel : ${req.user.role}.`,
+      });
+      return;
+    }
+
+    next();
+  };
+}
+
+// Les permissions granulaires restreignent un compte staff — jamais admin ou
+// développeur, déjà pleinement habilités par leur rôle. Une restriction n'est
+// active que si des permissions ont explicitement été enregistrées au moins
+// une fois pour ce compte (un tableau, même vide) : `permissions` à `null`
+// (tous les comptes staff existants, jamais configurés avant l'ajout de
+// cette fonctionnalité) garde le comportement historique — accès complet —
+// plutôt que de couper l'équipe régie en cours de service le jour où cette
+// vérification a été branchée sur les vraies routes.
+export function requirePermission(...allowedPermissions: AccountPermission[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Non authentifié.' });
+      return;
+    }
+
+    if (req.user.role === 'admin' || req.user.role === 'developer') {
+      next();
+      return;
+    }
+
+    if (!Array.isArray(req.user.permissions)) {
+      next();
+      return;
+    }
+
+    const granted = req.user.permissions;
+    if (!allowedPermissions.some((p) => granted.includes(p))) {
+      res.status(403).json({
+        error: `Accès refusé. Permission requise : ${allowedPermissions.join(' ou ')}. Demandez au développeur de vous l'attribuer depuis « Comptes & rôles ».`,
       });
       return;
     }

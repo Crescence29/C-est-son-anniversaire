@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { db } from '../dataStore.ts';
-import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.ts';
+import { authenticateToken, AuthRequest, requireRole, requirePermission } from '../middleware/auth.ts';
 import { OrderStatus, OrderDeliverable, Category, Service, FaqItem } from '../../types.ts';
 import { dispatchWebhookEvent } from '../webhooks.ts';
 
@@ -16,7 +16,7 @@ router.get('/stats', (req: AuthRequest, res: Response): void => {
 });
 
 // GET /api/staff/orders
-router.get('/orders', (req: AuthRequest, res: Response): void => {
+router.get('/orders', requirePermission('orders.manage'), (req: AuthRequest, res: Response): void => {
   const { status, search } = req.query;
 
   let orders = db.orders.map((o) => ({
@@ -43,7 +43,7 @@ router.get('/orders', (req: AuthRequest, res: Response): void => {
 });
 
 // PUT /api/staff/orders/:id/status
-router.put('/orders/:id/status', (req: AuthRequest, res: Response): void => {
+router.put('/orders/:id/status', requirePermission('orders.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const { nextStatus } = req.body;
 
@@ -109,7 +109,7 @@ router.put('/orders/:id/status', (req: AuthRequest, res: Response): void => {
 });
 
 // POST /api/staff/orders/:id/deliverables
-router.post('/orders/:id/deliverables', (req: AuthRequest, res: Response): void => {
+router.post('/orders/:id/deliverables', requirePermission('orders.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const { file_url, file_type = 'video', note } = req.body;
 
@@ -156,7 +156,7 @@ router.post('/orders/:id/deliverables', (req: AuthRequest, res: Response): void 
 });
 
 // PUT /api/staff/services/:id/availability
-router.put('/services/:id/availability', (req: AuthRequest, res: Response): void => {
+router.put('/services/:id/availability', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const { is_available } = req.body;
 
@@ -176,7 +176,7 @@ router.put('/services/:id/availability', (req: AuthRequest, res: Response): void
 });
 
 // POST /api/staff/categories (le staff peut aussi enrichir le catalogue)
-router.post('/categories', (req: AuthRequest, res: Response): void => {
+router.post('/categories', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { name, slug, description, image_url, icon_name, commission_rate } = req.body;
 
   if (!name || !slug || !description || !image_url) {
@@ -220,7 +220,7 @@ router.post('/categories', (req: AuthRequest, res: Response): void => {
 });
 
 // PUT /api/staff/categories/:id
-router.put('/categories/:id', (req: AuthRequest, res: Response): void => {
+router.put('/categories/:id', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const category = db.categories.find((c) => c.id === id);
 
@@ -252,7 +252,7 @@ router.put('/categories/:id', (req: AuthRequest, res: Response): void => {
 });
 
 // POST /api/staff/services
-router.post('/services', (req: AuthRequest, res: Response): void => {
+router.post('/services', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const {
     category_id,
     name,
@@ -319,7 +319,7 @@ router.post('/services', (req: AuthRequest, res: Response): void => {
 });
 
 // PUT /api/staff/services/:id
-router.put('/services/:id', (req: AuthRequest, res: Response): void => {
+router.put('/services/:id', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const service = db.services.find((s) => s.id === id);
 
@@ -368,7 +368,7 @@ router.put('/services/:id', (req: AuthRequest, res: Response): void => {
 });
 
 // POST /api/staff/videos
-router.post('/videos', (req: AuthRequest, res: Response): void => {
+router.post('/videos', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { title, description, video_url, thumbnail_url } = req.body;
 
   if (!title || !description || !video_url || !thumbnail_url) {
@@ -395,7 +395,7 @@ router.post('/videos', (req: AuthRequest, res: Response): void => {
 });
 
 // DELETE /api/staff/videos/:id
-router.delete('/videos/:id', (req: AuthRequest, res: Response): void => {
+router.delete('/videos/:id', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const index = db.featuredVideos.findIndex((v) => v.id === id);
 
@@ -415,7 +415,7 @@ router.get('/faq', (req: AuthRequest, res: Response): void => {
 });
 
 // POST /api/staff/faq
-router.post('/faq', (req: AuthRequest, res: Response): void => {
+router.post('/faq', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { question, answer } = req.body;
 
   if (!question || !answer) {
@@ -451,7 +451,7 @@ router.post('/faq', (req: AuthRequest, res: Response): void => {
 });
 
 // PUT /api/staff/faq/:id
-router.put('/faq/:id', (req: AuthRequest, res: Response): void => {
+router.put('/faq/:id', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const item = db.faqItems.find((f) => f.id === id);
 
@@ -470,7 +470,7 @@ router.put('/faq/:id', (req: AuthRequest, res: Response): void => {
 });
 
 // DELETE /api/staff/faq/:id
-router.delete('/faq/:id', (req: AuthRequest, res: Response): void => {
+router.delete('/faq/:id', requirePermission('catalog.manage'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const index = db.faqItems.findIndex((f) => f.id === id);
 
@@ -492,7 +492,7 @@ router.get('/support-messages', (req: AuthRequest, res: Response): void => {
 });
 
 // PUT /api/staff/support-messages/:id/reply
-router.put('/support-messages/:id/reply', (req: AuthRequest, res: Response): void => {
+router.put('/support-messages/:id/reply', requirePermission('support.respond'), (req: AuthRequest, res: Response): void => {
   const { id } = req.params;
   const { reply } = req.body;
 
