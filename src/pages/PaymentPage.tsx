@@ -77,7 +77,7 @@ const PAYMENT_PROVIDERS: PaymentProviderOption[] = [
       "border-sky-400 bg-sky-50 dark:bg-sky-500/10 shadow-[0_0_0_1px_rgba(14,116,144,0.15)]",
   },
   {
-    id: "celtis" as PaymentProviderType,
+    id: "celtiis" as PaymentProviderType,
     name: "Celtis Money",
     description: "Paiement Mobile Money",
     logo: "/payement-providers/celtis.jpeg",

@@ -389,12 +389,19 @@ export function getPaymentProvider(
     return new MockPaymentProvider();
   }
 
-  if (isFedaPayConfigured()) {
+  // Orange Money n'est pas proposé par FedaPay au Bénin (absent de leur
+  // grille tarifaire officielle) : le client verrait "Orange Money" choisi
+  // sur notre site, puis une page FedaPay qui ne propose pas cette option.
+  // Reste donc simulé tant qu'un fournisseur couvrant réellement Orange
+  // au Bénin n'est pas branché.
+  const fedaPaySupported: PaymentProviderType[] = ['mtn', 'moov', 'celtiis', 'fedapay'];
+
+  if (isFedaPayConfigured() && fedaPaySupported.includes(providerType)) {
     return new FedaPayProvider(providerType);
   }
 
   console.log(
-    `[PaymentProvider] FEDAPAY_SECRET_KEY absente du .env. Utilisation du moteur Mock pour ${providerType}.`
+    `[PaymentProvider] ${providerType === 'orange' ? 'Orange Money non couvert par FedaPay' : 'FEDAPAY_SECRET_KEY absente du .env'}. Utilisation du moteur Mock pour ${providerType}.`
   );
 
   return new MobileMoneyProvider(
