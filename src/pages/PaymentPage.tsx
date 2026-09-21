@@ -108,12 +108,56 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
   const [errorMessage, setErrorMessage] = useState("");
 
   const [step, setStep] = useState<
-    "form" | "waiting_prompt" | "failed"
+    "form" | "waiting_prompt" | "waiting_external" | "failed"
   >("form");
 
   const selectedProvider = PAYMENT_PROVIDERS.find(
     (item) => item.id === provider,
   );
+
+  // Vrai paiement (FedaPay) : le client complète sur une page hébergée
+  // ouverte dans un nouvel onglet, pendant qu'on interroge régulièrement
+  // notre API pour savoir dès que c'est confirmé (webhook FedaPay reçu côté
+  // serveur, ou vérification directe si le webhook tarde).
+  const pollPaymentStatus = (reference: string) => {
+    const startedAt = Date.now();
+    const POLL_INTERVAL_MS = 4000;
+    const POLL_TIMEOUT_MS = 5 * 60_000;
+
+    const interval = setInterval(async () => {
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        clearInterval(interval);
+        setIsProcessing(false);
+        setStep("failed");
+        setErrorMessage(
+          "Nous n’avons pas reçu de confirmation à temps. Si vous avez bien payé, actualisez votre commande dans quelques instants.",
+        );
+        return;
+      }
+
+      try {
+        const res = await api.get<{ payment: { status: string } }>(
+          `/payments/verify/${reference}`,
+        );
+
+        if (res.payment.status === "success") {
+          clearInterval(interval);
+          setIsProcessing(false);
+          onPaymentSuccess(order);
+        } else if (res.payment.status === "failed") {
+          clearInterval(interval);
+          setIsProcessing(false);
+          setStep("failed");
+          setErrorMessage(
+            "Paiement refusé ou annulé sur la page FedaPay.",
+          );
+        }
+        // "pending" : on continue simplement d'attendre.
+      } catch {
+        // Erreur réseau ponctuelle : on retente au prochain intervalle.
+      }
+    }, POLL_INTERVAL_MS);
+  };
 
   /**
    * ============================================================
@@ -137,6 +181,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         message: string;
         transaction: any;
         order: Order;
+        paymentUrl?: string;
       }>("/payments/initiate", {
         order_id: order.id,
         provider,
@@ -144,9 +189,20 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
         simulated_outcome: simulatedOutcome,
       });
 
+      // Vrai paiement (FedaPay) : une page de paiement hébergée est
+      // renvoyée — on l'ouvre et on patiente la vraie confirmation, au lieu
+      // de la temporisation simulée ci-dessous (mode démo uniquement).
+      if (res.paymentUrl) {
+        setStep("waiting_external");
+        window.open(res.paymentUrl, "_blank", "noopener,noreferrer");
+        pollPaymentStatus(res.transaction.provider_reference);
+        return;
+      }
+
       /**
        * Petite temporisation pour reproduire
        * l'expérience de validation Mobile Money.
+       * (Mode démo uniquement — sans fournisseur réel configuré.)
        */
       setTimeout(() => {
         setIsProcessing(false);
@@ -473,9 +529,12 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
             </div>
 
             {/* ==================================================
-                3. DEMO SIMULATOR
+                3. DEMO SIMULATOR — développement local uniquement,
+                jamais visible dans le site réel (import.meta.env.DEV
+                est figé à false dans le build de production).
             ================================================== */}
 
+            {import.meta.env.DEV && (
             <div
               className="
                 p-3.5
@@ -577,6 +636,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
 
               </div>
             </div>
+            )}
 
             {/* ==================================================
                 ERROR
@@ -728,6 +788,41 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({
                 Traitement sécurisé en cours...
               </p>
             )}
+
+          </div>
+        )}
+
+        {/* ======================================================
+            WAITING FOR EXTERNAL PAYMENT PAGE (FedaPay)
+        ====================================================== */}
+
+        {step === "waiting_external" && (
+          <div className="py-6 text-center space-y-5 animate-in fade-in">
+
+            <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-4 border-violet/20 animate-ping" />
+              <div className="w-14 h-14 rounded-full bg-violet text-white flex items-center justify-center shadow-lg relative z-10">
+                <Lock className="w-7 h-7" />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-serif font-bold text-lg text-ink">
+                Page de paiement ouverte
+              </h3>
+              <p className="text-xs sm:text-sm text-ink/75 max-w-sm mx-auto mt-2">
+                Un nouvel onglet s'est ouvert avec une page de paiement sécurisée (FedaPay). Complétez votre paiement là-bas — cette page se mettra à jour automatiquement dès que ce sera confirmé.
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-2 text-xs font-mono text-violet font-semibold bg-violet/10 px-3.5 py-1.5 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-violet animate-pulse" />
+              <span>En attente de la confirmation du paiement...</span>
+            </div>
+
+            <p className="text-[10px] text-ink/40">
+              Onglet fermé par erreur ou bloqué par le navigateur ? Réessayez, ou revenez plus tard consulter le statut de votre commande.
+            </p>
 
           </div>
         )}

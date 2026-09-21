@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '../middleware/auth.ts';
 import { getPaymentProvider } from '../services/payment.ts';
+import { verifyFedaPayWebhookSignature } from '../services/fedapay.ts';
 import {
   Payment,
   PaymentProviderType,
@@ -107,8 +108,8 @@ router.post(
       // réussite de son propre paiement (voir simulated_outcome ci-dessous).
       const validProviders: PaymentProviderType[] =
         process.env.NODE_ENV === 'production'
-          ? ['mtn', 'orange', 'moov', 'celtiis']
-          : ['mtn', 'orange', 'moov', 'celtiis', 'mock'];
+          ? ['mtn', 'orange', 'moov', 'celtiis', 'fedapay']
+          : ['mtn', 'orange', 'moov', 'celtiis', 'fedapay', 'mock'];
 
       if (!validProviders.includes(provider)) {
         res.status(400).json({
@@ -272,6 +273,11 @@ router.post(
         transaction:
           paymentRecord,
 
+        // Présent uniquement pour un vrai fournisseur (FedaPay) : la page
+        // de paiement hébergée vers laquelle rediriger le client. Absent
+        // pour le moteur Mock (déjà résolu de façon synchrone ci-dessus).
+        paymentUrl: result.paymentUrl,
+
         order,
       });
 
@@ -289,6 +295,68 @@ router.post(
     }
   }
 );
+
+// Coeur partagé de la vérification : interroge le vrai fournisseur pour un
+// paiement donné et met à jour commande/notification en conséquence.
+// Utilisé à la fois par la route de vérification (appelée par le client qui
+// patiente) et par le webhook FedaPay (confirmation serveur-à-serveur).
+async function finalizePaymentByReference(payment: Payment): Promise<{ error?: string; status?: number }> {
+  if (payment.status === 'success') return {};
+
+  const paymentService = getPaymentProvider(payment.provider);
+  const verified = await paymentService.verifyPayment(payment.provider_reference);
+
+  if (verified.amount !== payment.amount) {
+    console.error(
+      `[Payment] Montant incohérent pour ${payment.provider_reference} : ` +
+      `attendu ${payment.amount}, reçu du provider ${verified.amount}.`
+    );
+    recordLog(
+      'error',
+      'PaymentService',
+      `Montant incohérent : attendu ${payment.amount}, reçu ${verified.amount}.`,
+      `Transaction #${payment.provider_reference}`
+    );
+    return { error: 'Le montant vérifié ne correspond pas à la commande.', status: 409 };
+  }
+
+  const now = new Date().toISOString();
+  payment.status = verified.status;
+  payment.updated_at = now;
+
+  if (verified.status === 'success') {
+    payment.paid_at = verified.paidAt || now;
+
+    const order = db.orders.find((o) => o.id === payment.order_id);
+
+    if (order && order.status === 'pending_payment') {
+      order.status = 'paid';
+      order.payment_method = PAYMENT_METHOD_NAMES[payment.provider] || 'Mobile Money';
+      order.updated_at = now;
+
+      db.notifications.unshift({
+        id: `notif-${Date.now()}`,
+        user_id: payment.user_id,
+        title: 'Paiement confirmé ! 🎉',
+        message: `Votre paiement de ${payment.amount.toLocaleString()} ${payment.currency} pour la commande ${order.order_number} a été validé. Notre équipe commence la préparation !`,
+        type: 'payment',
+        is_read: false,
+        link_url: `/account/orders/${order.id}`,
+        created_at: now,
+      });
+    }
+
+    dispatchWebhookEvent('payment.succeeded', {
+      order_number: order?.order_number,
+      provider: payment.provider,
+      amount: payment.amount,
+      currency: payment.currency,
+      paid_at: payment.paid_at,
+    });
+  }
+
+  return {};
+}
 
 router.get(
   '/verify/:reference',
@@ -335,65 +403,12 @@ router.get(
       return;
     }
 
-    // Déjà finalisé : on ne re-vérifie pas auprès du provider (idempotence).
-    if (payment.status === 'success') {
-      res.json({ payment });
-      return;
-    }
-
     try {
-      const paymentService =
-        getPaymentProvider(payment.provider);
-
-      const verified =
-        await paymentService.verifyPayment(
-          payment.provider_reference
-        );
-
-      if (verified.amount !== payment.amount) {
-        console.error(
-          `[Payment] Montant incohérent pour ${payment.provider_reference} : ` +
-          `attendu ${payment.amount}, reçu du provider ${verified.amount}.`
-        );
-        recordLog(
-          'error',
-          'PaymentService',
-          `Montant incohérent : attendu ${payment.amount}, reçu ${verified.amount}.`,
-          `Transaction #${payment.provider_reference}`
-        );
-
-        res.status(409).json({
-          error:
-            'Le montant vérifié ne correspond pas à la commande.',
-        });
+      const result = await finalizePaymentByReference(payment);
+      if (result.error) {
+        res.status(result.status || 500).json({ error: result.error });
         return;
       }
-
-      const now = new Date().toISOString();
-      payment.status = verified.status;
-      payment.updated_at = now;
-
-      if (verified.status === 'success') {
-        payment.paid_at = verified.paidAt || now;
-
-        const order = db.orders.find(
-          (o) => o.id === payment.order_id
-        );
-
-        if (order && order.status === 'pending_payment') {
-          order.status = 'paid';
-          order.updated_at = now;
-        }
-
-        dispatchWebhookEvent('payment.succeeded', {
-          order_number: order?.order_number,
-          provider: payment.provider,
-          amount: payment.amount,
-          currency: payment.currency,
-          paid_at: payment.paid_at,
-        });
-      }
-
       res.json({ payment });
     } catch (error: any) {
       console.error(
@@ -414,6 +429,56 @@ router.get(
     }
   }
 );
+
+// POST /api/payments/fedapay/webhook — monté à part dans server.ts avec un
+// corps brut (express.raw), condition nécessaire à la vérification de
+// signature FedaPay. Confirme un paiement dès que FedaPay le notifie,
+// sans attendre que le client revienne sur l'app.
+export async function handleFedaPayWebhook(req: any, res: Response): Promise<void> {
+  const secret = process.env.FEDAPAY_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error('[FedaPay Webhook] FEDAPAY_WEBHOOK_SECRET manquant : requête rejetée.');
+    res.status(503).json({ error: 'Webhook temporairement indisponible.' });
+    return;
+  }
+
+  let event: any;
+  try {
+    const signature = req.headers['x-fedapay-signature'];
+    const rawBody: Buffer = req.body;
+    event = verifyFedaPayWebhookSignature(rawBody, signature, secret);
+  } catch (error: any) {
+    recordLog('warn', 'PaymentService', `Signature webhook FedaPay invalide : ${error.message}`, null);
+    res.status(400).json({ error: 'Signature invalide.' });
+    return;
+  }
+
+  const transactionId = event?.entity?.id ?? event?.object_id;
+  if (!transactionId) {
+    // Événement reçu et authentifié mais sans transaction exploitable
+    // (ex. un type d'événement qu'on ne traite pas) : accusé de réception
+    // normal, rien à faire.
+    res.status(200).json({ received: true });
+    return;
+  }
+
+  const payment = db.payments.find((p) => p.provider_reference === String(transactionId));
+  if (!payment) {
+    res.status(200).json({ received: true });
+    return;
+  }
+
+  try {
+    await finalizePaymentByReference(payment);
+  } catch (error: any) {
+    recordLog('error', 'PaymentService', `Échec du traitement du webhook FedaPay : ${error.message}`, `Transaction #${transactionId}`);
+    // On répond quand même 200 : FedaPay réessaiera sinon inutilement un
+    // événement que notre propre route /verify peut aussi rattraper au
+    // retour du client sur l'app.
+  }
+
+  res.status(200).json({ received: true });
+}
 
 router.post(
   '/webhook',

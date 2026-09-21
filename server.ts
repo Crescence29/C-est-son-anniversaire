@@ -9,7 +9,7 @@ import authRouter from './src/server/routes/auth.ts';
 import categoriesRouter from './src/server/routes/categories.ts';
 import servicesRouter from './src/server/routes/services.ts';
 import ordersRouter from './src/server/routes/orders.ts';
-import paymentsRouter from './src/server/routes/payments.ts';
+import paymentsRouter, { handleFedaPayWebhook } from './src/server/routes/payments.ts';
 import reviewsRouter from './src/server/routes/reviews.ts';
 import favoritesRouter from './src/server/routes/favorites.ts';
 import notificationsRouter from './src/server/routes/notifications.ts';
@@ -55,6 +55,11 @@ async function startServer() {
         : undefined
     )
   );
+  // Corps brut requis pour vérifier la signature FedaPay (HMAC calculé sur
+  // les octets exacts reçus) : doit être monté AVANT express.json() global,
+  // sinon le corps serait déjà consommé/reparsé en objet à ce stade.
+  app.post('/api/payments/fedapay/webhook', express.raw({ type: 'application/json' }), handleFedaPayWebhook);
+
   // Relevé au-delà de la limite par défaut (100kb) pour laisser passer une
   // photo de profil importée/prise par l'utilisateur, redimensionnée et
   // encodée en base64 côté navigateur avant envoi.

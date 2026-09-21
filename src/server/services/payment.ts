@@ -2,6 +2,7 @@ import {
   PaymentProviderType,
   PaymentStatus,
 } from '../../types.ts';
+import { createFedaPayCheckout, retrieveFedaPayTransaction, isFedaPayConfigured } from './fedapay.ts';
 
 export interface PaymentInitiateRequest {
   orderId: string;
@@ -294,6 +295,68 @@ export class MobileMoneyProvider
   }
 }
 
+// Traite réellement le paiement via FedaPay (agrégateur MTN MoMo/Moov/carte),
+// quel que soit l'opérateur affiché au client : c'est FedaPay qui parle
+// ensuite au bon réseau derrière. Le nom conservé (`this.name`) reste celui
+// choisi par le client, pour l'affichage/les statistiques ; seul le moteur
+// de traitement change.
+export class FedaPayProvider implements IPaymentProvider {
+  name: PaymentProviderType;
+
+  constructor(provider: PaymentProviderType = 'fedapay') {
+    this.name = provider;
+  }
+
+  async initiatePayment(req: PaymentInitiateRequest): Promise<PaymentInitiateResponse> {
+    const appUrl = process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
+    if (!appUrl) {
+      throw new Error('APP_URL (ou RAILWAY_PUBLIC_DOMAIN) manquant : impossible de construire une URL de callback valide pour FedaPay.');
+    }
+
+    const checkout = await createFedaPayCheckout({
+      description: `Commande ${req.orderNumber} — C’est son anniversaire`,
+      amount: req.amount,
+      currency: req.currency,
+      callbackUrl: `${appUrl}/api/payments/fedapay/webhook`,
+      clientName: req.clientName,
+      clientEmail: req.clientEmail,
+      phoneNumber: req.phoneNumber,
+    });
+
+    const reference = String(checkout.transactionId);
+    initiatedTransactions.set(reference, { amount: req.amount, currency: req.currency });
+
+    return {
+      success: true,
+      transactionId: `tx-fedapay-${checkout.transactionId}`,
+      providerReference: reference,
+      status: 'pending',
+      paymentUrl: checkout.paymentUrl,
+      message: 'Redirection vers la page de paiement sécurisée FedaPay (MTN MoMo, Moov Money, carte bancaire).',
+      amount: req.amount,
+      currency: req.currency,
+      provider: req.provider,
+    };
+  }
+
+  async verifyPayment(providerReference: string): Promise<PaymentVerifyResponse> {
+    const remote = await retrieveFedaPayTransaction(providerReference);
+
+    let status: PaymentStatus = 'pending';
+    if (remote.wasPaid) status = 'success';
+    else if (['canceled', 'declined', 'refunded'].includes(remote.status)) status = 'failed';
+
+    return {
+      transactionId: `tx-verify-${remote.id}`,
+      providerReference,
+      status,
+      amount: remote.amount,
+      paidAt: status === 'success' ? remote.updatedAt : undefined,
+      rawResponse: remote as unknown as Record<string, unknown>,
+    };
+  }
+}
+
 export function getPaymentProvider(
   providerType: PaymentProviderType = 'mock'
 ): IPaymentProvider {
@@ -313,6 +376,7 @@ export function getPaymentProvider(
     'orange',
     'moov',
     'celtiis',
+    'fedapay',
   ];
 
   if (
@@ -324,6 +388,14 @@ export function getPaymentProvider(
 
     return new MockPaymentProvider();
   }
+
+  if (isFedaPayConfigured()) {
+    return new FedaPayProvider(providerType);
+  }
+
+  console.log(
+    `[PaymentProvider] FEDAPAY_SECRET_KEY absente du .env. Utilisation du moteur Mock pour ${providerType}.`
+  );
 
   return new MobileMoneyProvider(
     providerType
