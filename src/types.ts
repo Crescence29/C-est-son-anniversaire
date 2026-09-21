@@ -219,6 +219,10 @@ export interface Payment {
   provider: PaymentProviderType;
   provider_reference: string;
   amount: number;
+  // Renseignés uniquement pour un paiement réellement traité par FedaPay et
+  // déjà finalisé : ce qu'ils ont prélevé et le net effectivement viré.
+  provider_fees?: number;
+  amount_transferred?: number;
   currency: string;
   status: PaymentStatus;
   phone_number: string;
@@ -315,6 +319,11 @@ export interface StaffDashboardStats {
 export interface AdminDashboardStats {
   totalRevenue: number;
   totalCommissions: number;
+  // Somme des frais réels prélevés par FedaPay et du net réellement viré sur
+  // le compte Mobile Money du marchand, sur les seuls paiements FedaPay déjà
+  // finalisés (les paiements simulés n'ont pas de frais réels à afficher).
+  totalProviderFees: number;
+  totalAmountTransferred: number;
   totalOrdersCount: number;
   newClientsCount: number;
   pendingReviewsCount: number;

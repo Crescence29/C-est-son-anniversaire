@@ -326,6 +326,8 @@ async function finalizePaymentByReference(payment: Payment): Promise<{ error?: s
 
   if (verified.status === 'success') {
     payment.paid_at = verified.paidAt || now;
+    if (verified.providerFees !== undefined) payment.provider_fees = verified.providerFees;
+    if (verified.amountTransferred !== undefined) payment.amount_transferred = verified.amountTransferred;
 
     const order = db.orders.find((o) => o.id === payment.order_id);
 

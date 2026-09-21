@@ -32,6 +32,8 @@ import {
   Ban,
   KeyRound,
   Copy,
+  Wallet,
+  ArrowDownToLine,
 } from 'lucide-react';
 
 type AdminTab = 'kpi' | 'commissions' | 'users' | 'transactions' | 'reviews' | 'catalog' | 'settings' | 'support';
@@ -755,50 +757,78 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ initialT
 
       {/* TAB 3: FINANCIAL TRANSACTIONS */}
       {activeTab === 'transactions' && (
-        <div className="glass-card rounded-2xl p-6 border border-black/5 dark:border-white/10 space-y-4">
-          <h3 className="font-serif font-bold text-base text-ink">
-            Historique des Paiements Mobile Money
-          </h3>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <KpiCard
+              label="Frais FedaPay Prélevés"
+              value={`${(stats?.totalProviderFees ?? 0).toLocaleString()} FCFA`}
+              icon={Wallet}
+              accent="rose"
+            />
+            <KpiCard
+              label="Net Reçu sur le Compte Mobile Money"
+              value={`${(stats?.totalAmountTransferred ?? 0).toLocaleString()} FCFA`}
+              icon={ArrowDownToLine}
+              accent="emerald"
+            />
+          </div>
+          <p className="text-[11px] text-ink/50 -mt-2">
+            Calculés uniquement sur les paiements réellement traités par FedaPay (MTN, Moov, Celtis) et déjà confirmés. Les paiements de démonstration et Orange Money (encore simulé) n'ont pas de frais réels.
+          </p>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-black/10 dark:border-white/10 text-ink/60 font-mono">
-                  <th className="pb-3">Réf. Transaction</th>
-                  <th className="pb-3">Opérateur</th>
-                  <th className="pb-3">Client</th>
-                  <th className="pb-3">Montant</th>
-                  <th className="pb-3">Statut</th>
-                  <th className="pb-3 text-right">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black/5 font-mono">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                    <td className="py-3 font-bold text-ink">{tx.provider_reference}</td>
-                    <td className="py-3 uppercase text-violet font-semibold">{tx.provider}</td>
-                    <td className="py-3 font-sans font-medium">{tx.user_name}</td>
-                    <td className="py-3 font-bold text-ink">
-                      {tx.amount.toLocaleString()} {tx.currency}
-                    </td>
-                    <td className="py-3">
-                      <span
-                        className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                          tx.status === 'success'
-                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-red-500/20 text-red-700 dark:text-red-400'
-                        }`}
-                      >
-                        {tx.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right text-ink/60">
-                      {new Date(tx.created_at).toLocaleDateString('fr-FR')}
-                    </td>
+          <div className="glass-card rounded-2xl p-6 border border-black/5 dark:border-white/10 space-y-4">
+            <h3 className="font-serif font-bold text-base text-ink">
+              Historique des Paiements Mobile Money
+            </h3>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-black/10 dark:border-white/10 text-ink/60 font-mono">
+                    <th className="pb-3">Réf. Transaction</th>
+                    <th className="pb-3">Opérateur</th>
+                    <th className="pb-3">Client</th>
+                    <th className="pb-3">Montant</th>
+                    <th className="pb-3">Frais FedaPay</th>
+                    <th className="pb-3">Net Viré</th>
+                    <th className="pb-3">Statut</th>
+                    <th className="pb-3 text-right">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-black/5 font-mono">
+                  {transactions.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                      <td className="py-3 font-bold text-ink">{tx.provider_reference}</td>
+                      <td className="py-3 uppercase text-violet font-semibold">{tx.provider}</td>
+                      <td className="py-3 font-sans font-medium">{tx.user_name}</td>
+                      <td className="py-3 font-bold text-ink">
+                        {tx.amount.toLocaleString()} {tx.currency}
+                      </td>
+                      <td className="py-3 text-ink/70">
+                        {tx.provider_fees != null ? `${Number(tx.provider_fees).toLocaleString()} ${tx.currency}` : '—'}
+                      </td>
+                      <td className="py-3 text-ink/70">
+                        {tx.amount_transferred != null ? `${Number(tx.amount_transferred).toLocaleString()} ${tx.currency}` : '—'}
+                      </td>
+                      <td className="py-3">
+                        <span
+                          className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                            tx.status === 'success'
+                              ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-red-500/20 text-red-700 dark:text-red-400'
+                          }`}
+                        >
+                          {tx.status}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right text-ink/60">
+                        {new Date(tx.created_at).toLocaleDateString('fr-FR')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

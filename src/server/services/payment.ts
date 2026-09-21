@@ -34,6 +34,10 @@ export interface PaymentVerifyResponse {
   status: PaymentStatus;
   amount: number;
   paidAt?: string;
+  // Renseignés uniquement par un vrai fournisseur (FedaPay) capable de dire
+  // ce qu'il a réellement prélevé et transféré ; absents pour le moteur Mock.
+  providerFees?: number;
+  amountTransferred?: number;
   rawResponse?: Record<string, unknown>;
 }
 
@@ -352,6 +356,8 @@ export class FedaPayProvider implements IPaymentProvider {
       status,
       amount: remote.amount,
       paidAt: status === 'success' ? remote.updatedAt : undefined,
+      providerFees: remote.fees,
+      amountTransferred: remote.amountTransferred,
       rawResponse: remote as unknown as Record<string, unknown>,
     };
   }

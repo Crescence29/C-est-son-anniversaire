@@ -59,7 +59,7 @@ const TABLES: Record<TableName, { primaryKey: string; columns: string[] }> = {
   categories: { primaryKey: 'id', columns: ['id', 'name', 'slug', 'description', 'image_url', 'icon_name', 'commission_rate', 'is_active', 'created_at', 'updated_at'] },
   services: { primaryKey: 'id', columns: ['id', 'category_id', 'name', 'slug', 'description', 'short_description', 'price', 'currency', 'delay_label', 'image_url', 'is_available', 'is_featured', 'is_live_broadcast', 'created_at', 'updated_at'] },
   orders: { primaryKey: 'id', columns: ['id', 'order_number', 'client_id', 'service_id', 'category_id', 'recipient_name', 'recipient_phone', 'birthday_date', 'message', 'special_instructions', 'status', 'amount', 'currency', 'commission_rate', 'commission_amount', 'net_amount', 'delivered_at', 'created_at', 'updated_at'] },
-  payments: { primaryKey: 'id', columns: ['id', 'order_id', 'user_id', 'provider', 'provider_reference', 'amount', 'currency', 'status', 'phone_number', 'paid_at', 'created_at', 'updated_at'] },
+  payments: { primaryKey: 'id', columns: ['id', 'order_id', 'user_id', 'provider', 'provider_reference', 'amount', 'provider_fees', 'amount_transferred', 'currency', 'status', 'phone_number', 'paid_at', 'created_at', 'updated_at'] },
   commissions: { primaryKey: 'id', columns: ['id', 'category_id', 'rate', 'updated_by', 'created_at', 'updated_at'] },
   reviews: { primaryKey: 'id', columns: ['id', 'order_id', 'service_id', 'user_id', 'rating', 'comment', 'status', 'created_at', 'updated_at'] },
   featured_videos: { primaryKey: 'id', columns: ['id', 'title', 'description', 'video_url', 'thumbnail_url', 'is_active', 'position', 'created_by', 'created_at', 'updated_at'] },
@@ -640,6 +640,8 @@ class DataStore {
     const validOrders = this.orders.filter((o) => !['pending_payment', 'cancelled', 'refunded'].includes(o.status));
     const totalRevenue = validOrders.reduce((sum, o) => sum + Number(o.amount), 0);
     const totalCommissions = validOrders.reduce((sum, o) => sum + Number(o.commission_amount), 0);
+    const totalProviderFees = this.payments.reduce((sum, p) => sum + Number(p.provider_fees || 0), 0);
+    const totalAmountTransferred = this.payments.reduce((sum, p) => sum + Number(p.amount_transferred || 0), 0);
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
     const newClientsCount = this.users.filter((u) => u.role === 'client' && new Date(u.created_at).getTime() >= monthStart).length;
@@ -649,7 +651,7 @@ class DataStore {
       const categoryOrders = validOrders.filter((o) => o.category_id === c.id);
       return { category: c.name, revenue: categoryOrders.reduce((sum, o) => sum + Number(o.amount), 0), commission: categoryOrders.reduce((sum, o) => sum + Number(o.commission_amount), 0) };
     }).filter((x) => x.revenue > 0);
-    return { totalRevenue, totalCommissions, totalOrdersCount: this.orders.length, newClientsCount, pendingReviewsCount: this.reviews.filter((r) => r.status === 'pending').length, recentTransactions: this.payments.slice(0, 8), recentUsers: this.users.slice(-8).reverse(), ordersByStatus, revenueByCategory };
+    return { totalRevenue, totalCommissions, totalProviderFees, totalAmountTransferred, totalOrdersCount: this.orders.length, newClientsCount, pendingReviewsCount: this.reviews.filter((r) => r.status === 'pending').length, recentTransactions: this.payments.slice(0, 8), recentUsers: this.users.slice(-8).reverse(), ordersByStatus, revenueByCategory };
   }
 
   getClientStats(userId: string): ClientDashboardStats {

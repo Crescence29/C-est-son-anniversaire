@@ -93,6 +93,11 @@ export interface FedaPayTransactionState {
   amount: number;
   wasPaid: boolean;
   updatedAt: string;
+  // Frais réels prélevés par FedaPay et montant net effectivement viré au
+  // marchand pour cette transaction — renvoyés tels quels par leur API,
+  // plutôt qu'estimés via un pourcentage théorique.
+  fees: number;
+  amountTransferred: number;
 }
 
 export async function retrieveFedaPayTransaction(transactionId: number | string): Promise<FedaPayTransactionState> {
@@ -106,6 +111,8 @@ export async function retrieveFedaPayTransaction(transactionId: number | string)
     amount: transaction.amount,
     wasPaid: transaction.wasPaid(),
     updatedAt: transaction.updated_at,
+    fees: Number(transaction.fees) || 0,
+    amountTransferred: Number(transaction.amount_transferred) || 0,
   };
 }
 
