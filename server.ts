@@ -31,16 +31,59 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Masque le framework utilisé (en-tête X-Powered-By ajouté par défaut par
+  // Express) plutôt que de donner gratuitement cette information à un
+  // attaquant qui scannerait le site.
+  app.disable('x-powered-by');
+
+  // Hash SHA-256 du script inline de index.html (bascule thème clair/sombre
+  // avant le premier rendu) : autorise précisément ce script dans la CSP
+  // ci-dessous sans avoir à ouvrir 'unsafe-inline' pour tous les scripts. À
+  // recalculer si ce script change un jour (voir index.html).
+  const THEME_SCRIPT_CSP_HASH = 'sha256-6gALs6pNHY4EbOKZ950cY6R4JlYUo6wP+lMwVaz0mdQ=';
+
+  // En-têtes de sécurité HTTP standards, absents par défaut d'une app
+  // Express nue (repérés par un scan de sécurité externe) : bloquent le
+  // clickjacking, le sniffing de type MIME, forcent HTTPS, et limitent les
+  // origines capables de charger scripts/styles/images.
+  app.use((req, res, next) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        `script-src 'self' '${THEME_SCRIPT_CSP_HASH}'`,
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: https:",
+        "media-src 'self' data: https:",
+        "frame-src https://www.youtube.com",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+      ].join('; ')
+    );
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+
   // Basic Middlewares
   // En production, seules les origines explicitement autorisées (le vrai
   // domaine de l'appli) peuvent appeler l'API en cross-origin ; en dev, tout
-  // est accepté pour ne pas gêner le travail local.
+  // est accepté pour ne pas gêner le travail local. Limité à /api : le reste
+  // du site (pages, fichiers statiques) n'a jamais besoin d'en-têtes CORS.
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
 
   app.use(
+    '/api',
     cors(
       process.env.NODE_ENV === 'production'
         ? {
@@ -59,6 +102,14 @@ async function startServer() {
   // les octets exacts reçus) : doit être monté AVANT express.json() global,
   // sinon le corps serait déjà consommé/reparsé en objet à ce stade.
   app.post('/api/payments/fedapay/webhook', express.raw({ type: 'application/json' }), handleFedaPayWebhook);
+
+  // Les réponses de l'API peuvent contenir des données propres à
+  // l'utilisateur connecté (commandes, paiements, profil) : jamais à mettre
+  // en cache par le navigateur ou un proxy intermédiaire.
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   // Relevé au-delà de la limite par défaut (100kb) pour laisser passer une
   // photo de profil importée/prise par l'utilisateur, redimensionnée et
